@@ -1,0 +1,6 @@
+{
+  "name": "Inochi Ez Home",
+  "description": "Ứng dụng Inochi Ez Home - Quản lý giá bán sản phẩm chính, tối ưu hóa giá thành COGS quà tặng và phân tích điểm hòa vốn.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
