@@ -471,36 +471,83 @@ Chỉ trả về JSON thô trong khối mã để tôi parse, tuyệt đối kh�
   }
 });
 
+// Helper to parse data URL into mimeType and base64 data for Gemini
+const parseDataUrl = (dataUrl: string) => {
+  const matches = dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.*)$/);
+  if (matches && matches.length === 3) {
+    return {
+      mimeType: matches[1],
+      data: matches[2]
+    };
+  }
+  return null;
+};
+
 // AI Chatbot Assistant for strategy, quizzes, combos and pricing queries
 app.post("/api/ai-chat", async (req, res) => {
   const { messages, mainProducts, cogsProducts } = req.body;
   
   const ai = getGeminiClient();
   if (!ai) {
+    const lastUserImg = messages && messages.length > 0 ? [...messages].reverse().find(m => m.role === "user" && m.image) : null;
+    let offlineReply = "Chào bạn! Tôi là trợ lý AI phân tích chiến lược định giá và cố vấn chiến dịch TMĐT. Do `GEMINI_API_KEY` chưa được cấu hình, tôi đang chạy ở chế độ offline.";
+    
+    if (lastUserImg) {
+      offlineReply += "\n\n📸 **[Chế độ Offline]** Tôi nhận thấy bạn đã tải lên/paste một hình ảnh chiến dịch (Chương trình đặc biệt của Shopee hoặc TikTok Shop). \n\nĐể phân tích chi tiết hình ảnh này bằng thị giác máy tính của Gemini, bạn vui lòng nhập **GEMINI_API_KEY** trong mục **Settings > Secrets** trên thanh công cụ nhé!\n\n**Gợi ý phân tích chiến dịch dựa vào định hướng hình ảnh của bạn:**\n1. **Xem xét Biên Lợi Nhuận Gộp (GM%)**: Đối chiếu mức giá giảm đề xuất trong ảnh với khung giá hiện trưng bày của chúng ta (ví dụ so sánh coi có dưới mức giá sàn **MIN** hay không).\n2. **Tối ưu Quà tặng kèm**: Nếu tham gia chiến dịch lớn này, khuyến nghị phối hợp tặng các món quành có COGS tối ưu (như *Inochi Bình nước Kita Glow* - chỉ 49.958đ hoặc *Bộ 4 hộp trữ đông* - chỉ 48.347đ) để chi phí quà tặng luôn nằm trong định mức cho phép (mặc định 8%).\n3. **Cân nhắc CF Fee (Đồng tài trợ)**: Xem sàn yêu cầu tài trợ bao nhiêu % (ví dụ 10% cho TikTok Shop) để cộng vào chi phí xem Net Pool về tay có đủ bù COGS và đem lại lợi nhuận không.";
+    } else {
+      offlineReply += "\n\nBạn có thể hỏi hoặc paste/tải hình ảnh chương trình đặc biệt lên để tôi tư vấn sản phẩm Inochi nào tham gia thì tối ưu biên lợi nhuận nhé!";
+    }
+    
     return res.json({
-      reply: "Chào bạn! Tôi là trợ lý AI phân tích giá sản phẩm và đề xuất combo quà tặng. Do GEMINI_API_KEY chưa được cấu hình, tôi đang chạy ở chế độ offline. Bạn cần tư vấn chiến dịch giá hay định mức món quà, hãy cấu hình API Key trong mục Settings > Secrets nhé!\n\nVí dụ: Bạn có thể chọn Nồi chiên không dầu 5L và tạo gói Quà tặng Nồi đá Omi Simple dưới mức ngân sách tối đa mong muốn!"
+      reply: offlineReply
     });
   }
 
   try {
-    const systemPrompt = `Bạn là chuyên gia phân tích giá bán lẻ, định giá chiến lược (Pricing Analyst) và thiết lập combo quà tặng cho thương hiệu gia dụng cao cấp tại Việt Nam.
+    const systemPrompt = `Bạn là chuyên gia cố vấn chiến lược định giá bán lẻ (Pricing Analyst) kiêm chuyên gia vận hành sàn TMĐT (Shopee, TikTok Shop, Lazada) cho thương hiệu gia dụng cao cấp Inochi tại Việt Nam.
 Bạn có quyền truy cập vào thông tin sản phẩm và quà tặng sau:
 - Danh sách sản phẩm chính (Main products): ${JSON.stringify(mainProducts || [])}
 - Danh sách giá thành quà tặng COGS (COGS gift products): ${JSON.stringify(cogsProducts || [])}
 
-Nhiệm vụ của bạn là hỗ trợ người sử dụng học tập giá sản phẩm, gợi ý các combo khuyến mãi thông minh có quà tặng sao cho tổng giá thành (COGS của sản phẩm + COGS của quà tặng) không vượt quá ngân sách khuyến mãi và tối ưu hóa tỷ lệ lợi nhuận.
-Hãy trả lời các câu hỏi bằng tiếng Việt một cách thông minh, súc tích, chuyên nghiệp và có chiều sâu chiến lược. Đối với các yêu cầu đề xuất combo quà tặng:
+Nhiệm vụ của bạn là:
+1. Hộp trợ người dùng phân tích giá sản phẩm, gợi ý các combo khuyến mãi thông minh có quà tặng sao cho tổng giá thành (COGS của sản phẩm + COGS của quà tặng) không vượt quá ngân sách khuyến mãi và tối ưu hóa tỷ lệ lợi nhuận gộp.
+2. PHÂN TÍCH HÌNH ẢNH / ẢNH CHỤP MÀN HÌNH CHƯƠNG TRÌNH ĐẶC BIỆT: Người dùng sẽ paste hoặc tải lên hình ảnh chụp màn hình các chương trình khuyến mãi khuyên tham gia từ sàn Shopee/TikTok Shop (như Flash Sale, Prime Day, Live Campaign, voucher co-funding CF, gói trợ giá...). Bạn hãy:
+   - Phân tích thông tin chiết khấu/giá bán hoặc luật lệ chương trình xuất hiện trong ảnh.
+   - Đối chiếu mức giá yêu cầu của chương trình với khung giá sản phẩm Inochi của ta (RSP, BAU, SPIKE, KOL, MIN).
+   - Đưa ra khuyến nghị chân thành và chi tiết: Có nên đăng ký tham gia hay không? Nếu tham gia thì SKU nào của Inochi là tối ưu nhất? Nên cài đặt quà tặng Inochi kèm theo thế nào để tối đa hoá tỷ lệ NM (Net Margin) và Net Pool về tay?
+
+Hãy trả lời bằng tiếng Việt một cách thông minh, súc tích, chuyên nghiệp và có chiều sâu chiến lược. Đối với các yêu cầu đề xuất combo quà tặng/tham gia chiến dịch:
 - Liệt kê rõ giá vốn COGS của sản phẩm chính và COGS của quà tặng.
-- Tính toán tỷ giá lợi nhuận gộp theo từng mức giá (RSP, BAU, SPIKE, KOL, MIN).
+- Tính toán tỷ giá lợi nhuận gộp theo từng mức giá (RSP, BAU, SPIKE, KOL, MIN) để người bán đưa ra quyết định thông minh nhất.
 - Đưa ra lời khuyên thực tế.`;
 
     // Map messages payload to Gemini contents format
     let formattedContents = (messages || [])
-      .map((m: any) => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: (m.text || m.content || "").trim() }]
-      }))
-      .filter((m: any) => m.parts[0].text !== "");
+      .map((m: any) => {
+        const parts: any[] = [];
+        const textContent = (m.content || m.text || "").trim();
+        if (textContent) {
+          parts.push({ text: textContent });
+        }
+        
+        if (m.image) {
+          const parsed = parseDataUrl(m.image);
+          if (parsed) {
+            parts.push({
+              inlineData: {
+                mimeType: parsed.mimeType,
+                data: parsed.data
+              }
+            });
+          }
+        }
+        
+        return {
+          role: m.role === "assistant" ? "model" : "user",
+          parts: parts
+        };
+      })
+      .filter((c: any) => c.parts.length > 0);
 
     // Find the first index of "user" to ensure history starts with user turn as required by Gemini API
     const firstUserIdx = formattedContents.findIndex((c: any) => c.role === "user");
@@ -512,7 +559,7 @@ Hãy trả lời các câu hỏi bằng tiếng Việt một cách thông minh, 
 
     if (formattedContents.length === 0) {
       return res.json({
-        reply: "Chào bạn! Vui lòng gửi một nội dung câu hỏi để bắt đầu thảo luận cuộc trò chuyện."
+        reply: "Chào bạn! Vui lòng gửi một nội dung câu hỏi hoặc tải hình ảnh lên để tôi bắt đầu tư vấn chiến lược."
       });
     }
 
