@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { MainProduct, CogsProduct } from '../types';
 import { 
   MessageSquare, Sparkles, Send, RefreshCw, HelpCircle, 
-  Lightbulb, ChevronRight, Brain
+  Lightbulb, ChevronRight, Brain, Image, Paperclip, X
 } from 'lucide-react';
 
 interface AIConsultantProps {
@@ -13,19 +13,22 @@ interface AIConsultantProps {
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  image?: string; // base64 representation or data URL
 }
 
 export default function AIConsultant({ mainProducts, cogsProducts }: AIConsultantProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
-      content: 'Chào bạn! Tôi là **Trợ lý Tư vấn Chiến lược Định giá AI**. Tôi có quyền truy cập toàn bộ bảng định giá sản phẩm và danh mục quà tặng Inochi hiện có.\n\nHãy chọn một câu hỏi gợi ý bên dưới hoặc nhắn trực tiếp cho tôi để bắt đầu tính toán!'
+      content: 'Chào bạn! Tôi là **Trợ lý Tư vấn Chiến lược Định giá & Chương Trình Sàn AI**.\n\nHãy chọn một câu hỏi gợi ý bên dưới, nhắn trực tiếp, hoặc **gửi trực tiếp/paste (Ctrl+V) ảnh chụp màn hình** chương trình chiến dịch đặc biệt của sàn để tối ưu chiến lược tham gia ngay!'
     }
   ]);
   const [inputMessage, setInputMessage] = useState('');
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Auto scroll to bottom
   useEffect(() => {
@@ -34,25 +37,67 @@ export default function AIConsultant({ mainProducts, cogsProducts }: AIConsultan
 
   // Pre-configured quick questions
   const preConfiguredQuestions = [
+    { label: '🎯 Đăng ký tham gia Flash Sale Sàn', query: 'Tôi vừa gửi ảnh chương trình/Tôi muốn hỏi: Làm sao đăng ký tham gia Flash Sale Sàn tăng trưởng doanh số tốt mà vẫn đảm bảo Net Margin an toàn?' },
     { label: '🔥 Đề xuất combo Nồi Chiên 5L', query: 'Gợi ý các quà tặng Inochi tối ưu nhất cho Nồi chiên không dầu 5L ở giá bán ngày thường (BAU) để giữ biên lợi nhuận trên 30%.' },
-    { label: '📊 Phân tích Tăm Nước giá rẻ', query: 'Hãy phân tích bài toán định giá của Tăm nước du lịch. Nhận diện các mức giá tối thiểu (Min Price) so với giá BAU và giá KOL.' },
-    { label: '💡 Thiết lập Mega Campaign tuần', query: 'Xây dựng một kịch bản trợ giá tặng quà cho đợt sale lớn Mega Spike nhằm kích cầu sản phẩm Bàn chải điện cao cấp.' }
+    { label: '📊 Phân tích Tăm Nước giá rẻ', query: 'Hãy phân tích bài toán định giá của Tăm nước du lịch. Nhận diện các mức giá tối thiểu (Min Price) so với giá BAU và giá KOL.' }
   ];
 
-  // Send message to Express endpoint
-  const handleSendMessage = async (text: string) => {
-    if (!text.trim()) return;
+  // Handle Pasting Images
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            if (event.target?.result) {
+              setAttachedImage(event.target.result as string);
+            }
+          };
+          reader.readAsDataURL(file);
+          e.preventDefault();
+        }
+      }
+    }
+  };
 
-    const userMsg: ChatMessage = { role: 'user', content: text };
+  // Handle Manual File Upload
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setAttachedImage(event.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Send message to Express endpoint
+  const handleSendMessage = async (text: string, imageOverride?: string | null) => {
+    const finalImage = imageOverride !== undefined ? imageOverride : attachedImage;
+    if (!text.trim() && !finalImage) return;
+
+    const userMsg: ChatMessage = { 
+      role: 'user', 
+      content: text,
+      ...(finalImage ? { image: finalImage } : {})
+    };
+
     setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
+    setAttachedImage(null);
     setIsTyping(true);
 
     try {
       const chatPayload = {
         messages: [...messages, userMsg].map(m => ({
           role: m.role,
-          content: m.content
+          content: m.content,
+          image: m.image
         })),
         mainProducts,
         cogsProducts
@@ -84,24 +129,27 @@ export default function AIConsultant({ mainProducts, cogsProducts }: AIConsultan
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-xs flex flex-col h-[520px] overflow-hidden">
       {/* Advisor Header */}
-      <div className="bg-slate-50/80 px-4 py-3.5 border-b border-slate-200 flex items-center justify-between">
+      <div className="bg-slate-50/80 px-4 py-3.5 border-b border-slate-200 flex items-center justify-between animate-fade-in">
         <div className="flex items-center gap-2">
           <div className="p-1.5 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-150">
             <Sparkles size={16} />
           </div>
           <div>
             <h3 className="font-extrabold text-slate-900 text-xs uppercase tracking-wide">Trợ lý Chiến lược AI</h3>
-            <p className="text-[10px] text-slate-400 font-bold font-sans">Bổ trợ bởi mô hình Gemini 1.5 Pro</p>
+            <p className="text-[10px] text-slate-400 font-bold font-sans animate-pulse">Hỗ trợ Phân Tích Hình Ảnh (Multimodal)</p>
           </div>
         </div>
         
         <button
-          onClick={() => setMessages([
-            {
-              role: 'assistant',
-              content: 'Chào bạn! Tôi đã làm mới lịch sử tư vấn. Hãy cùng thảo luận về bài toán tối ưu biên gộp và lập combo bán hàng nào.'
-            }
-          ])}
+          onClick={() => {
+            setMessages([
+              {
+                role: 'assistant',
+                content: 'Chào bạn! Tôi đã làm mới lịch sử tư vấn. Hãy cùng phân tích bài toán tối ưu biên gộp, combo hoặc gửi lên hình ảnh chiến dịch mới nhé.'
+              }
+            ]);
+            setAttachedImage(null);
+          }}
           className="text-xs font-bold text-slate-400 hover:text-slate-600 focus:outline-none flex items-center gap-1 cursor-pointer transition"
           title="Xoá lịch sử hội thoại"
         >
@@ -123,10 +171,16 @@ export default function AIConsultant({ mainProducts, cogsProducts }: AIConsultan
                   ? 'bg-slate-900 text-white rounded-br-none font-medium shadow-2xs' 
                   : 'bg-white text-slate-805 rounded-bl-none border border-slate-200 shadow-3xs'
               }`}>
+                {/* Embedded Image inside bubble */}
+                {m.image && (
+                  <div className="mb-2 max-w-xs overflow-hidden rounded-lg border border-slate-200/50 shadow-2xs bg-slate-100">
+                    <img src={m.image} alt="Campaign Attachment" className="max-h-48 w-auto object-contain mx-auto" />
+                  </div>
+                )}
                 {/* Parse minimal bold notations */}
-                <div className="whitespace-pre-wrap select-text font-medium">
+                <div className="whitespace-pre-wrap select-text font-medium text-xs sm:text-sm">
                   {m.content.split('\n').map((paragraph, index) => {
-                    const formatted = paragraph.replace(/\*\*(.*?)\*\*/g, '<strong class="font-extrabold text-slate-950">$1</strong>');
+                    const formatted = paragraph.replace(/\*\*(.*?)\*\*/g, '<strong class="font-extrabold text-indigo-600">$1</strong>');
                     return (
                       <p 
                         key={index} 
@@ -147,7 +201,7 @@ export default function AIConsultant({ mainProducts, cogsProducts }: AIConsultan
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-505 animate-bounce" />
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-505 animate-bounce delay-100" />
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-505 animate-bounce delay-200" />
-              <span className="text-[11px] ml-1 font-sans">AI đang hoạch định chiến thuật...</span>
+              <span className="text-[11px] ml-1 font-sans">AI đang thẩm duyệt chương trình chiến dịch...</span>
             </div>
           </div>
         )}
@@ -158,7 +212,7 @@ export default function AIConsultant({ mainProducts, cogsProducts }: AIConsultan
       {messages.length === 1 && !isTyping && (
         <div className="px-4 py-2.5 bg-indigo-50/20 border-t border-slate-200">
           <span className="text-[10px] text-indigo-700 font-extrabold uppercase tracking-wider block mb-1.5 flex items-center gap-1">
-            <Lightbulb size={12} className="text-indigo-600" /> Đề xuất chủ đề nhanh:
+            <Lightbulb size={12} className="text-indigo-600" /> Đề xuất chiến thuật nhanh:
           </span>
           <div className="flex flex-col gap-1.5">
             {preConfiguredQuestions.map((q, id) => (
@@ -175,7 +229,38 @@ export default function AIConsultant({ mainProducts, cogsProducts }: AIConsultan
         </div>
       )}
 
-      {/* Message input bar */}
+      {/* Draft Attachment Preview */}
+      {attachedImage && (
+        <div className="px-4 py-2 border-t border-slate-200 bg-slate-50/90 flex items-center justify-between gap-2 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-slate-200 bg-white shadow-2xs group shrink-0">
+              <img src={attachedImage} alt="Attachment Preview" className="w-full h-full object-cover" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-slate-800">Ảnh chụp đính kèm sẵn sàng (Sàn TMĐT)</p>
+              <p className="text-[9px] text-slate-400 font-semibold font-sans">Sẽ được phân tích bằng công nghệ Multimodal</p>
+            </div>
+          </div>
+          <button 
+            type="button"
+            onClick={() => setAttachedImage(null)}
+            className="p-1 px-2.5 text-rose-600 hover:text-rose-700 font-bold text-[11px] bg-rose-50 hover:bg-rose-100 rounded-lg shrink-0 cursor-pointer transition border border-rose-100"
+          >
+            Huỷ bỏ
+          </button>
+        </div>
+      )}
+
+      {/* Hidden file input */}
+      <input 
+        type="file" 
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept="image/*"
+        className="hidden"
+      />
+
+      {/* Message input bar with attachment button */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -183,16 +268,30 @@ export default function AIConsultant({ mainProducts, cogsProducts }: AIConsultan
         }}
         className="px-4 py-3 border-t border-slate-200 flex items-center gap-2 bg-white"
       >
+        {/* Attachment button */}
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="p-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 rounded-xl transition cursor-pointer flex items-center justify-center shrink-0"
+          title="Tải lên ảnh chương trình chiến dịch"
+        >
+          <Image size={16} />
+        </button>
+
+        {/* Text Input with onPaste */}
         <input
           type="text"
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
-          placeholder="Hỏi về biên gộp, quà tặng hoặc định hướng khuyến mãi..."
-          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl text-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-805"
+          onPaste={handlePaste}
+          placeholder="Ctrl+V để dán ảnh chiến dịch sàn TMĐT cần cố vấn hoặc nhắn tin..."
+          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-805"
         />
+
+        {/* Submit button */}
         <button
           type="submit"
-          disabled={!inputMessage.trim() || isTyping}
+          disabled={(!inputMessage.trim() && !attachedImage) || isTyping}
           className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-slate-850 active:scale-95 focus:outline-none transition shrink-0 cursor-pointer disabled:opacity-40"
         >
           <Send size={15} />
