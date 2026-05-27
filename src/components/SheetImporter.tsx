@@ -1,0 +1,919 @@
+import React, { useState, useMemo } from 'react';
+import { MainProduct, CogsProduct } from '../types';
+import { 
+  Clipboard, Table, FileSpreadsheet, AlertCircle, CheckCircle, 
+  Settings, HelpCircle, Info, TrendingUp, Coins, ArrowRight, 
+  CornerDownRight, Sparkles, RotateCcw, Download, Eye, Layers, ChevronRight
+} from 'lucide-react';
+
+interface SheetImporterProps {
+  mainProducts: MainProduct[];
+  cogsProducts: CogsProduct[];
+}
+
+interface FeeItem {
+  type: 'percent' | 'value';
+  val: number;
+}
+
+interface GroupedMainItem {
+  id: string;
+  campaignType: string;
+  barcode: string;
+  vpCode: string;
+  productName: string;
+  quantity: number;
+  listPrice: number;
+  lowestPrice: number; // Base Price
+  gifts: {
+    barcode: string;
+    vpCode: string;
+    productName: string;
+    quantity: number;
+    listPrice: number;
+    lowestPrice: number;
+    matchedGiftProduct?: CogsProduct;
+    giftCogs: number;
+  }[];
+  matchedMainProduct?: MainProduct;
+  mainProductCogs: number;
+}
+
+export default function SheetImporter({ mainProducts, cogsProducts }: SheetImporterProps) {
+  // Pasted raw spreadsheet data state
+  const [pastedText, setPastedText] = useState<string>('');
+  
+  // Custom Shopee Fee configs for this calculator workspace
+  const [feeConfigs, setFeeConfigs] = useState({
+    fixedFee: { type: 'percent', val: 17 } as FeeItem,
+    infraFee: { type: 'value', val: 3000 } as FeeItem,
+    paymentFee: { type: 'percent', val: 6.0 } as FeeItem,
+    voucherXtra: { type: 'percent', val: 5.0 } as FeeItem,
+    voucherXtraCap: 50000,
+    commission: { type: 'percent', val: 15.0 } as FeeItem,
+    ffmFee: { type: 'percent', val: 5.0 } as FeeItem,
+    returnFee: { type: 'percent', val: 1.0 } as FeeItem,
+    platformVoucher: { type: 'percent', val: 20.0 } as FeeItem,
+    platformVoucherCap: 150000,
+  });
+
+  const [activeItemDetails, setActiveItemDetails] = useState<string | null>(null);
+
+  // Helper to format currency
+  const formatVND = (v: number) => {
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' })
+      .format(Math.round(v))
+      .replace('₫', 'đ');
+  };
+
+  // Helper to compute individual config values
+  const calculateValue = (feeItem: FeeItem, basePriceVal: number, capAmt?: number) => {
+    let amt = 0;
+    if (feeItem.type === 'percent') {
+      amt = basePriceVal * (feeItem.val / 100);
+    } else {
+      amt = feeItem.val;
+    }
+    if (capAmt !== undefined && capAmt > 0 && amt > capAmt) {
+      return capAmt;
+    }
+    return amt;
+  };
+
+  // Load Sample Google Sheet data for easy trial
+  const loadSampleData = () => {
+    const sample = `Campaign Type\tBarcode\tVP Code\tLoại\tTên sản phẩm\tSố lượng\tGiá niêm yết\tGiá thấp nhất
+BAU\tNồi chiên không dầu 4L\tNồi chiên không dầu 4L\tMain\tNồi chiên không dầu 4L\t1\t1,700,000\t1,190,000
+BAU\t8935275211573\tHIN.HODN.SOOM\tGift\tInochi Hộp lưu trữ đa năng Sano - Dung tích lớn, Nắp màu xanh lá mạ\t1\t89,000\t45,000
+BAU\t8935275207095\tHIN.TUZP.SLDO0\tGift\tTúi zipper đa năng Shinshen 1L (có khóa kéo loại đỏ)\t1\t45,000\t0
+BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t1\t0\t0
+BAU\tNồi chiên không dầu 5L\tNồi chiên không dầu 5L\tMain\tNồi chiên không dầu 5L\t1\t2,200,000\t1,540,000
+BAU\t8935275211573\tHIN.HODN.SOOM\tGift\tInochi Hộp lưu trữ đa năng Sano - Dung tích lớn, Nắp màu xanh lá mạ\t1\t89,000\t45,000
+BAU\t8935275207095\tHIN.TUZP.SLDO0\tGift\tTúi zipper đa năng Shinshen 1L (có khóa kéo loại đỏ)\t1\t45,000\t0
+BAU\t8935275211573\tHIN.BIKS.0500G\tGift\tInochi Bình nước Kita Slim - Thiết kế nhỏ gọn, Dễ cầm nắm\t1\t169,000\t105,000
+BAU\tNồi chiên không dầu 7L\tNồi chiên không dầu 7L\tMain\tNồi chiên không dầu 7L\t1\t3,200,000\t2,240,000
+BAU\t8935275211573\tHIN.HODN.SOOM\tGift\tInochi Hộp lưu trữ đa năng Sano - Dung tích lớn, Nắp màu xanh lá mạ\t1\t89,000\t45,000
+BAU\t8935275207095\tHIN.TUZP.SLDO0\tGift\tTúi zipper đa năng Shinshen 1L (có khóa kéo loại đỏ)\t1\t45,000\t0
+BAU\t8935275211573\tHIN.BIKS.0500G\tGift\tInochi Bình nước Kita Slim - Thiết kế nhỏ gọn, Dễ cầm nắm\t1\t169,000\t105,000
+BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t1\t0\t0
+BAU\tMáy rửa rau AKIBA\tMáy rửa rau Ak\tMain\tMáy rửa rau Akiba Plus\t1\t1,600,000\t1,280,000
+BAU\t8935275211573\tHIN.HODN.SOOM\tGift\tInochi Hộp lưu trữ đa năng Sano - Dung tích lớn, Nắp màu xanh lá mạ\t1\t89,000\t45,000
+BAU\t8935275207095\tHIN.TUZP.SLDO0\tGift\tTúi zipper đa năng Shinshen 1L (có khóa kéo loại đỏ)\t1\t45,000\t0
+BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t1\t0\t0`;
+    setPastedText(sample);
+  };
+
+  // Parsing & Calculation engine
+  const processedData = useMemo(() => {
+    if (!pastedText.trim()) return { groupedItems: [], stats: null, warnings: [] };
+
+    const lines = pastedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) return { groupedItems: [], stats: null, warnings: [] };
+
+    // Standard column indices
+    let idxCampaign = 0;
+    let idxBarcode = 1;
+    let idxVpCode = 2;
+    let idxType = 3;
+    let idxName = 4;
+    let idxQty = 5;
+    let idxRsp = 6;
+    let idxLowest = 7;
+
+    const firstLineCells = lines[0].split('\t').map(c => c.trim().toLowerCase());
+    const isHeaderRow = firstLineCells.some(cell => 
+      cell.includes('campaign') || 
+      cell.includes('barcode') || 
+      cell.includes('mã') || 
+      cell.includes('loại') || 
+      cell.includes('sản phẩm') || 
+      cell.includes('giá')
+    );
+
+    let dataLines = lines;
+    if (isHeaderRow) {
+      // Find matching index dynamically
+      dataLines = lines.slice(1);
+      firstLineCells.forEach((cell, idx) => {
+        if (cell.includes('campaign') || cell.includes('chiến dịch')) idxCampaign = idx;
+        else if (cell.includes('barcode')) idxBarcode = idx;
+        else if (cell.includes('vp') || cell.includes('sku')) idxVpCode = idx;
+        else if (cell.includes('loại') || cell.includes('type')) idxType = idx;
+        else if (cell.includes('tên') || cell.includes('sản phẩm') || cell.includes('product')) idxName = idx;
+        else if (cell.includes('số') || cell.includes('quantity') || cell.includes('sl') || cell.includes('lượng')) idxQty = idx;
+        else if (cell.includes('niêm') || cell.includes('rsp') || cell.includes('mức')) idxRsp = idx;
+        else if (cell.includes('thấp') || cell.includes('giá bán') || cell.includes('thỏaa')) idxLowest = idx;
+      });
+    }
+
+    const rawRows = dataLines.map(line => line.split('\t'));
+    const warnings: string[] = [];
+    const groupedItems: GroupedMainItem[] = [];
+    let currentMain: GroupedMainItem | null = null;
+
+    rawRows.forEach((row, rowIndex) => {
+      // Align columns safely
+      const cellVal = (idx: number) => {
+        if (idx < row.length) {
+          // Remove wrapping double quotes
+          return row[idx].replace(/^"|"$/g, '').trim();
+        }
+        return '';
+      };
+
+      const campaignType = cellVal(idxCampaign) || 'BAU';
+      const barcode = cellVal(idxBarcode);
+      const vpCode = cellVal(idxVpCode);
+      const typeStr = cellVal(idxType);
+      const name = cellVal(idxName);
+      const qtyStr = cellVal(idxQty);
+      const rspStr = cellVal(idxRsp);
+      const lowestStr = cellVal(idxLowest);
+
+      // Parse numerical values
+      const cleanNum = (str: string) => {
+        const cleaned = str.replace(/[^0-9.-]/g, '').replace(/\./g, '');
+        const val = parseFloat(cleaned);
+        return isNaN(val) ? 0 : val;
+      };
+
+      const quantity = cleanNum(qtyStr) || 1;
+      const listPrice = cleanNum(rspStr);
+      const lowestPrice = cleanNum(lowestStr);
+
+      const isMain = typeStr.toLowerCase().includes('main') || typeStr.toLowerCase() === 'm';
+      const isGift = typeStr.toLowerCase().includes('gift') || typeStr.toLowerCase() === 'g' || typeStr.toLowerCase().includes('tặng');
+
+      if (!isMain && !isGift) {
+        // If unrecognized, skip or assume warning
+        if (name) warnings.push(`Dòng #${rowIndex + 2} có phân loại "${typeStr}" không rõ là Main hay Gift. Chúng tôi tạm bỏ qua.`);
+        return;
+      }
+
+      if (isMain) {
+        // Create new Main Group
+        // Find main product in DB to extract reliable COGS
+        const match = mainProducts.find(p => 
+          (barcode && p.barcode === barcode) || 
+          (vpCode && p.vpCode === vpCode) || 
+          (name && p.name.toLowerCase() === name.toLowerCase())
+        );
+
+        const resolvedCogs = match ? match.cogsUpdated : (listPrice * 0.55); // Fallback estimate
+
+        if (!match && name) {
+          warnings.push(`Sản phẩm chính "${name}" (${vpCode || barcode}) không khớp khớp dữ liệu gốc. Đã dùng ước lượng COGS tạm thời (55% giá catalogue).`);
+        }
+
+        currentMain = {
+          id: `row-${rowIndex}-${vpCode || barcode || 'main'}`,
+          campaignType,
+          barcode,
+          vpCode,
+          productName: name || match?.name || 'Sản phẩm chính không tên',
+          quantity,
+          listPrice: listPrice || match?.rsp || 0,
+          lowestPrice: lowestPrice || listPrice || match?.rsp || 0,
+          gifts: [],
+          matchedMainProduct: match,
+          mainProductCogs: resolvedCogs
+        };
+        groupedItems.push(currentMain);
+      } else if (isGift) {
+        if (!currentMain) {
+          warnings.push(`Dòng #${rowIndex + 2} là quà tặng "${name}" nhưng đứng độc lập, không có sản phẩm Main nâng đỡ ở phía trước.`);
+          return;
+        }
+
+        // Match gift in COGS catalog to get business COGS
+        const giftMatch = cogsProducts.find(g => 
+          (barcode && g.barcode === barcode) || 
+          (vpCode && (g.mainSku === vpCode || g.skuPhanLoai === vpCode)) || 
+          (name && g.name.toLowerCase() === name.toLowerCase())
+        ) || (mainProducts.find(p => 
+          (barcode && p.barcode === barcode) || 
+          (vpCode && p.vpCode === vpCode) || 
+          (name && p.name.toLowerCase() === name.toLowerCase())
+        ) as any);
+
+        const resolvedGiftCogs = giftMatch ? giftMatch.cogs : 0;
+
+        if (!giftMatch && name) {
+          warnings.push(`Quà tặng "${name}" (${vpCode || barcode}) không nằm trong danh mục COGS được phê duyệt. Tạm tính phí vốn quà tặng = 0đ.`);
+        }
+
+        currentMain.gifts.push({
+          barcode,
+          vpCode,
+          productName: name || giftMatch?.name || 'Quà không tên',
+          quantity,
+          listPrice,
+          lowestPrice,
+          matchedGiftProduct: giftMatch,
+          giftCogs: resolvedGiftCogs
+        });
+      }
+    });
+
+    // If activeItemDetails is null, select the first item
+    if (groupedItems.length > 0 && !activeItemDetails) {
+      setActiveItemDetails(groupedItems[0].id);
+    }
+
+    // Now compute the whole Shopee spreadsheet formula for each GroupedMainItem
+    const computedGroups = groupedItems.map(item => {
+      const basePrice = item.lowestPrice; // Lowest price as agreed sale price
+      const shopVoucher = 0; // Default no shop voucher inputted from paste
+
+      // Actual combined gift cost for this main
+      const actualGiftCogs = item.gifts.reduce((sum, g) => sum + (g.giftCogs * g.quantity), 0);
+
+      // Shopee plat vouchers
+      const platformBasePrice = Math.max(0, basePrice - shopVoucher);
+      const platformVoucherCost = calculateValue(feeConfigs.platformVoucher, platformBasePrice, feeConfigs.platformVoucherCap);
+
+      // Compute Individual fees for Shopee standard
+      const fixedFee = calculateValue(feeConfigs.fixedFee, basePrice);
+      const infraFee = calculateValue(feeConfigs.infraFee, basePrice);
+      const paymentFee = calculateValue(feeConfigs.paymentFee, basePrice);
+      const voucherXtra = calculateValue(feeConfigs.voucherXtra, basePrice, feeConfigs.voucherXtraCap);
+      const commission = calculateValue(feeConfigs.commission, basePrice);
+      const ffmFee = calculateValue(feeConfigs.ffmFee, basePrice);
+      const returnFee = calculateValue(feeConfigs.returnFee, basePrice);
+
+      const totalFees = fixedFee + infraFee + paymentFee + voucherXtra + commission + ffmFee + returnFee;
+
+      // Net Pool: Giá thấp nhất (basePrice) - Shop Voucher - Phí sàn - Quà tặng COGS
+      const netPool = basePrice - shopVoucher - totalFees - actualGiftCogs;
+
+      // Net profit: Net Pool - Vốn sản phẩm (mainProductCogs)
+      const netProfit = netPool - item.mainProductCogs;
+
+      // %GM = ((basePrice - shopVoucher - actualGiftCogs - mainProductCogs) / basePrice) * 100
+      const percentageGM = basePrice > 0 
+        ? ((basePrice - shopVoucher - actualGiftCogs - item.mainProductCogs) / basePrice) * 100 
+        : 0;
+
+      // %NM = ((netPool - mainProductCogs) / netPool) * 100 -> profit margin of Net Pool
+      const percentageNM = netPool !== 0 
+        ? (netProfit / netPool) * 100 
+        : 0;
+
+      return {
+        ...item,
+        metrics: {
+          basePrice,
+          shopVoucher,
+          actualGiftCogs,
+          platformVoucherCost,
+          fixedFee,
+          infraFee,
+          paymentFee,
+          voucherXtra,
+          commission,
+          ffmFee,
+          returnFee,
+          totalFees,
+          netPool,
+          netProfit,
+          percentageGM,
+          percentageNM,
+          customerBuyPrice: basePrice - shopVoucher - platformVoucherCost
+        }
+      };
+    });
+
+    // Stats calculations
+    let totalMainPrice = 0;
+    let totalNetPool = 0;
+    let totalCogsSum = 0;
+    let totalProfitSum = 0;
+    let totalGiftsCogs = 0;
+
+    computedGroups.forEach(g => {
+      totalMainPrice += g.metrics.basePrice;
+      totalNetPool += g.metrics.netPool;
+      totalCogsSum += g.mainProductCogs;
+      totalProfitSum += g.metrics.netProfit;
+      totalGiftsCogs += g.metrics.actualGiftCogs;
+    });
+
+    const avgGM = totalMainPrice > 0 
+      ? ((totalMainPrice - totalGiftsCogs - totalCogsSum) / totalMainPrice) * 100 
+      : 0;
+
+    const avgNM = totalNetPool > 0 
+      ? (totalProfitSum / totalNetPool) * 100 
+      : 0;
+
+    const stats = {
+      totalMain: computedGroups.length,
+      totalGifts: computedGroups.reduce((acc, g) => acc + g.gifts.length, 0),
+      totalValue: totalMainPrice,
+      totalNetPool,
+      totalGiftCogsValue: totalGiftsCogs,
+      avgGM,
+      avgNM,
+      totalProfit: totalProfitSum
+    };
+
+    return {
+      groupedItems: computedGroups,
+      stats,
+      warnings
+    };
+  }, [pastedText, feeConfigs, mainProducts, cogsProducts]);
+
+  const activeGroupItem = useMemo(() => {
+    if (!processedData.groupedItems || processedData.groupedItems.length === 0) return null;
+    return processedData.groupedItems.find(g => g.id === activeItemDetails) || processedData.groupedItems[0];
+  }, [processedData.groupedItems, activeItemDetails]);
+
+  // Export computed list to CSV
+  const handleExportCSV = () => {
+    if (processedData.groupedItems.length === 0) return;
+
+    const headers = [
+      'Campaign Type', 'Barcode', 'VP Code', 'Loai', 'Ten San Pham', 'Gia Thap Nhat (Selling)', 
+      'COGS San Pham', 'Tong COGS Qua Tang', 'Phi Co Dinh Shopee', 'Phi Co Co So', 'Phi Thanh Toan (6%)', 
+      'Voucher X-tra', 'Hoa hong', 'Fulfillment', 'Return Risk', 'NET POOL (Doanh Thu Thuan)', 
+      'Loi Nhuan Thuan (Profit)', '%GM (Margin Gop)', '%NM (Margin Rong)'
+    ];
+
+    const rows = processedData.groupedItems.map(g => [
+      `"${g.campaignType}"`,
+      `"${g.barcode}"`,
+      `"${g.vpCode}"`,
+      'Main',
+      `"${g.productName}"`,
+      g.metrics.basePrice,
+      g.mainProductCogs,
+      g.metrics.actualGiftCogs,
+      g.metrics.fixedFee,
+      g.metrics.infraFee,
+      g.metrics.paymentFee,
+      g.metrics.voucherXtra,
+      g.metrics.commission,
+      g.metrics.ffmFee,
+      g.metrics.returnFee,
+      g.metrics.netPool,
+      g.metrics.netProfit,
+      `"${g.metrics.percentageGM.toFixed(1)}%"`,
+      `"${g.metrics.percentageNM.toFixed(1)}%"`
+    ]);
+
+    // Append child gifts row for trace
+    processedData.groupedItems.forEach(g => {
+      g.gifts.forEach(gift => {
+        rows.push([
+          `"${g.campaignType}"`,
+          `"${gift.barcode}"`,
+          `"${gift.vpCode}"`,
+          'Gift (Nested)',
+          `"--> TANG: ${gift.productName}"`,
+          gift.lowestPrice,
+          0,
+          gift.giftCogs,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, '""', '""'
+        ]);
+      });
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+      + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Inochi_GoogleSheet_Paste_Calculated_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <div className="space-y-6">
+      
+      {/* Tab Header Banner */}
+      <div className="bg-gradient-to-r from-indigo-900 to-slate-900 rounded-3xl p-6 text-white shadow-md relative overflow-hidden">
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 bg-indigo-750/30 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="space-y-1">
+            <span className="bg-indigo-500/20 text-indigo-300 font-extrabold text-[9px] uppercase tracking-wider px-2.5 py-1 rounded-full border border-indigo-500/30 inline-block">
+              ✨ Tính năng mới
+            </span>
+            <h2 className="text-xl font-extrabold tracking-tight font-sans">
+              Tính Giá Tự Động Từ Google Sheet
+            </h2>
+            <p className="text-indigo-200/80 text-xs max-w-xl">
+              Chỉ cần sao chép (Copy) các sản phẩm trực tiếp từ trang quản lý file Google Sheet của bạn rồi dán (Paste) vào khung bên dưới để tự động tính toán cơ cấu quà tặng và biên lợi nhuận Shopee.
+            </p>
+          </div>
+          <button
+            onClick={loadSampleData}
+            className="cursor-pointer text-xs bg-indigo-600 hover:bg-indigo-500 border border-indigo-400/35 text-white font-extrabold px-4.5 py-2.5 rounded-xl flex items-center gap-2 shadow-md hover:scale-103 active:scale-98 transition shrink-0"
+          >
+            <Sparkles size={14} /> Chạy Thử Mẫu Google Sheet
+          </button>
+        </div>
+      </div>
+
+      {/* Two Columns Grid: Input Area vs Configurations */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Paste Box Area */}
+        <div className="col-span-1 lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-5 shadow-3xs flex flex-col space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
+              <Clipboard size={14} className="text-indigo-600 animate-pulse" />
+              Khung Dán Dữ Liệu (Ctrl+v)
+            </label>
+            <span className="text-[10px] text-slate-400 font-medium">Hỗ trợ đầy đủ bộ cột quy chuẩn</span>
+          </div>
+
+          <textarea
+            value={pastedText}
+            onChange={(e) => setPastedText(e.target.value)}
+            placeholder={`Bấm Ctrl+V vào đây để dán bảng từ Sheets...
+
+Cột quy chuẩn mẫu từ Google Sheet:
+Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | Số lượng | Giá niêm yết | Giá thấp nhất`}
+            className="w-full h-44 bg-slate-50/50 border border-slate-200 rounded-2xl p-4 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-505/20 focus:bg-white transition placeholder-slate-350 leading-relaxed resize-none"
+          />
+
+          <div className="flex justify-between items-center text-[11px] text-indigo-600 font-semibold bg-indigo-50/40 p-3 rounded-xl border border-indigo-100/50">
+            <span className="flex items-center gap-1.5">
+              <Info size={13} />
+              Cơ cấu: Sản phẩm nào Loại "Main" thì các sản phẩm "Gift" phía dưới sẽ được phân phối tặng kèm.
+            </span>
+            {pastedText && (
+              <button 
+                onClick={() => setPastedText('')}
+                className="text-[10px] text-rose-600 hover:text-rose-700 font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition"
+              >
+                <RotateCcw size={11} /> Xoá rỗng
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Shopee Fee Modifier sidebar */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-3xs flex flex-col space-y-4">
+          <div className="flex items-center gap-2 pb-1.5 border-b border-slate-100">
+            <div className="p-1.5 bg-amber-50 text-amber-700 rounded-lg">
+              <Settings size={15} />
+            </div>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">Thông Số Phí Sàn Shopee</h3>
+              <p className="text-[9px] text-slate-400 font-bold font-sans">Áp dụng trực tiếp vào bảng tính từ Google Sheet</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3.5 text-xs">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Phí Cố Định</label>
+              <div className="flex rounded-lg shadow-3xs overflow-hidden border border-slate-200">
+                <input 
+                  type="number" 
+                  value={feeConfigs.fixedFee.val} 
+                  onChange={(e) => setFeeConfigs(prev => ({ ...prev, fixedFee: { ...prev.fixedFee, val: parseFloat(e.target.value) || 0 } }))}
+                  className="w-full bg-slate-50 px-2.5 py-1.5 text-center font-bold text-slate-800 focus:outline-none" 
+                />
+                <span className="bg-slate-200/70 text-slate-600 px-2 py-1.5 font-bold font-mono text-[10px] flex items-center">%</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Cổng Thanh Toán</label>
+              <div className="flex rounded-lg shadow-3xs overflow-hidden border border-slate-200">
+                <input 
+                  type="number" 
+                  value={feeConfigs.paymentFee.val} 
+                  onChange={(e) => setFeeConfigs(prev => ({ ...prev, paymentFee: { ...prev.paymentFee, val: parseFloat(e.target.value) || 0 } }))}
+                  className="w-full bg-slate-50 px-2.5 py-1.5 text-center font-bold text-slate-800 focus:outline-none" 
+                />
+                <span className="bg-slate-200/70 text-slate-600 px-2 py-1.5 font-bold font-mono text-[10px] flex items-center">%</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Hoa Hồng</label>
+              <div className="flex rounded-lg shadow-3xs overflow-hidden border border-slate-200">
+                <input 
+                  type="number" 
+                  value={feeConfigs.commission.val} 
+                  onChange={(e) => setFeeConfigs(prev => ({ ...prev, commission: { ...prev.commission, val: parseFloat(e.target.value) || 0 } }))}
+                  className="w-full bg-slate-50 px-2.5 py-1.5 text-center font-bold text-slate-800 focus:outline-none" 
+                />
+                <span className="bg-slate-200/70 text-slate-600 px-2 py-1.5 font-bold font-mono text-[10px] flex items-center">%</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Voucher X-tra</label>
+              <div className="flex rounded-lg shadow-3xs overflow-hidden border border-slate-200">
+                <input 
+                  type="number" 
+                  value={feeConfigs.voucherXtra.val} 
+                  onChange={(e) => setFeeConfigs(prev => ({ ...prev, voucherXtra: { ...prev.voucherXtra, val: parseFloat(e.target.value) || 0 } }))}
+                  className="w-full bg-slate-50 px-2.5 py-1.5 text-center font-bold text-slate-800 focus:outline-none" 
+                />
+                <span className="bg-slate-200/70 text-slate-600 px-2 py-1.5 font-bold font-mono text-[10px] flex items-center">%</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Phí Vận Hành FFM</label>
+              <div className="flex rounded-lg shadow-3xs overflow-hidden border border-slate-200">
+                <input 
+                  type="number" 
+                  value={feeConfigs.ffmFee.val} 
+                  onChange={(e) => setFeeConfigs(prev => ({ ...prev, ffmFee: { ...prev.ffmFee, val: parseFloat(e.target.value) || 0 } }))}
+                  className="w-full bg-slate-50 px-2.5 py-1.5 text-center font-bold text-slate-800 focus:outline-none" 
+                />
+                <span className="bg-slate-200/70 text-slate-600 px-2 py-1.5 font-bold font-mono text-[10px] flex items-center">%</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Hạ Tầng Vận Hành</label>
+              <div className="flex rounded-lg shadow-3xs overflow-hidden border border-slate-200">
+                <input 
+                  type="text" 
+                  value={feeConfigs.infraFee.val.toLocaleString('vi-VN')} 
+                  onChange={(e) => {
+                    const raw = parseInt(e.target.value.replace(/[^0-9]/g, '')) || 0;
+                    setFeeConfigs(prev => ({ ...prev, infraFee: { ...prev.infraFee, val: raw } }));
+                  }}
+                  className="w-full bg-slate-50 px-2.5 py-1.5 text-center font-bold text-slate-800 focus:outline-none" 
+                />
+                <span className="bg-slate-200/70 text-slate-600 px-1.5 py-1.5 font-bold font-mono text-[7px] flex items-center">VND</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Warning logger system if any mismatch */}
+      {processedData.warnings.length > 0 && (
+        <div className="bg-amber-50/70 border border-amber-250 rounded-2xl p-4 flex gap-3 items-start">
+          <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={16} />
+          <div className="space-y-1">
+            <h4 className="text-xs font-black text-amber-900 uppercase">Hệ thống phát hiện ghi chú lệch khớp ({processedData.warnings.length}):</h4>
+            <div className="max-h-24 overflow-y-auto text-[11px] text-amber-700 space-y-1 scrollbar-thin pl-1 font-semibold leading-relaxed">
+              {processedData.warnings.map((warn, id) => (
+                <div key={id} className="flex gap-1.5">
+                  <span>•</span>
+                  <span>{warn}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Real-time stats blocks if loaded */}
+      {processedData.stats && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
+          
+          <div className="bg-white border border-slate-200 p-4.5 rounded-2xl shadow-3xs flex items-center gap-3">
+            <div className="p-3 bg-indigo-50 text-indigo-700 rounded-xl">
+              <Table size={18} />
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-400 font-black block uppercase font-mono tracking-widest">Tổng Sản Phẩm</span>
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className="text-lg font-extrabold text-slate-900">{processedData.stats.totalMain} SKU</span>
+                <span className="text-[9px] text-slate-400 font-bold">({processedData.stats.totalGifts} món quà)</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 p-4.5 rounded-2xl shadow-3xs flex items-center gap-3">
+            <div className="p-3 bg-amber-50 text-amber-700 rounded-xl">
+              <TrendingUp size={18} />
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-400 font-black block uppercase font-mono tracking-widest">Trung Bình Biên Gộp</span>
+              <span className={`text-lg font-extrabold block mt-0.5 ${processedData.stats.avgGM >= 30 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {processedData.stats.avgGM.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 p-4.5 rounded-2xl shadow-3xs flex items-center gap-3">
+            <div className="p-3 bg-emerald-50 text-emerald-705 rounded-xl">
+              <Coins size={18} />
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-400 font-black block uppercase font-mono tracking-widest">Trung Bình Biên Ròng NM</span>
+              <span className="text-lg font-extrabold text-emerald-600 block mt-0.5">
+                {processedData.stats.avgNM.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 p-4.5 rounded-2xl shadow-3xs flex items-center gap-3">
+            <div className="p-3 bg-teal-50 text-teal-700 rounded-xl">
+              <CheckCircle size={18} />
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-400 font-black block uppercase font-mono tracking-widest">Tổng Net Pool Thuần</span>
+              <span className="text-lg font-extrabold text-teal-600 block mt-0.5">
+                {formatVND(processedData.stats.totalNetPool)}
+              </span>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* Main Calculated Table Workspace */}
+      {processedData.groupedItems.length > 0 && (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-fade-in">
+          
+          {/* Main workspace spreadsheet table (Cols: 2/3 width) */}
+          <div className="xl:col-span-2 bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs flex flex-col">
+            <div className="px-5 py-4 border-b border-slate-150 bg-slate-50/75 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <FileSpreadsheet size={15} className="text-emerald-650" />
+                  Chi Tiết Thành Phẩm & Biên Xuất Lực
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-0.5 font-bold font-sans">
+                  Sắp xếp tuyến tính: Sản phẩm chính đính kèm danh sách quà tặng tương ứng từ Google Sheet.
+                </p>
+              </div>
+
+              <button
+                onClick={handleExportCSV}
+                className="cursor-pointer text-[10px] bg-emerald-600 hover:bg-emerald-505 text-white font-extrabold px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-3xs transition"
+              >
+                <Download size={12} /> Tải file CSV bảng tính
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-xs font-sans">
+                <thead>
+                  <tr className="bg-slate-100/90 font-bold text-slate-500/85 text-[10px] uppercase tracking-wider border-b border-slate-200 font-mono">
+                    <th className="py-3 px-4 w-[280px]">Sản Phẩm Main / Tặng kèm</th>
+                    <th className="py-3 px-3 text-right">Giá Trả Thượng</th>
+                    <th className="py-3 px-3 text-right">COGS Vốn</th>
+                    <th className="py-3 px-3 text-right">COGS Quà</th>
+                    <th className="py-3 px-3 text-right bg-emerald-50/35 text-emerald-800 font-mono font-bold">Net Pool</th>
+                    <th className="py-3 px-3 text-center bg-amber-50/50 text-amber-800">%GM</th>
+                    <th className="py-3 px-4 text-center bg-emerald-50 text-emerald-800">%NM</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {processedData.groupedItems.map((item) => {
+                    const isSelected = item.id === activeItemDetails;
+                    return (
+                      <React.Fragment key={item.id}>
+                        {/* Main Product row */}
+                        <tr 
+                          onClick={() => setActiveItemDetails(item.id)}
+                          className={`cursor-pointer transition-all hover:bg-indigo-50/20 ${
+                            isSelected ? 'bg-indigo-55/10 border-l-4 border-indigo-600' : ''
+                          }`}
+                        >
+                          <td className="py-3 px-4">
+                            <div className="flex flex-col">
+                              <span className="font-extrabold text-slate-800 tracking-tight leading-snug line-clamp-1">{item.productName}</span>
+                              <div className="flex gap-1.5 items-center mt-1 text-[9px] font-mono font-bold">
+                                <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 px-1.5 rounded uppercase">Main</span>
+                                <span className="text-slate-400">VP: {item.vpCode || 'N/A'}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono text-slate-700">{formatVND(item.metrics.basePrice)}</td>
+                          <td className="py-3 px-3 text-right font-mono text-indigo-700 font-bold">{formatVND(item.mainProductCogs)}</td>
+                          <td className="py-3 px-3 text-right font-mono text-cyan-600">
+                            {item.metrics.actualGiftCogs > 0 ? formatVND(item.metrics.actualGiftCogs) : <span className="text-slate-350 font-normal">Không có</span>}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-extrabold text-teal-700 bg-emerald-50/15">{formatVND(item.metrics.netPool)}</td>
+                          <td className="py-3 px-3 text-center bg-amber-50/10 font-bold text-amber-700">{item.metrics.percentageGM.toFixed(0)}%</td>
+                          <td className="py-3 px-4 text-center bg-emerald-50/30 font-extrabold text-emerald-800">{item.metrics.percentageNM.toFixed(0)}%</td>
+                        </tr>
+
+                        {/* Nested Gift list rows */}
+                        {item.gifts.length > 0 && item.gifts.map((gift, gId) => (
+                          <tr key={`${item.id}-gift-${gId}`} className="bg-slate-50/40 text-[11px] text-slate-650 hover:bg-slate-100/30">
+                            <td className="py-2.5 px-4 pl-9">
+                              <div className="flex items-center gap-1.5">
+                                <CornerDownRight size={12} className="text-indigo-400 shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-slate-700 leading-tight line-clamp-1">{gift.productName}</p>
+                                  <p className="text-[8px] text-slate-400 font-mono font-bold mt-0.5">SL: {gift.quantity} x Sàn trợ giá: {formatVND(gift.lowestPrice)}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-slate-400 font-mono">-</td>
+                            <td className="py-2.5 px-3 text-right text-slate-400 font-mono">-</td>
+                            <td className="py-2.5 px-3 text-right font-mono text-cyan-625 font-bold">
+                              {formatVND(gift.giftCogs * gift.quantity)}
+                              <span className="text-[8px] text-cyan-500 ml-1">vốn</span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-slate-400 font-mono">-</td>
+                            <td className="py-2.5 px-3 text-center text-slate-400 font-mono">-</td>
+                            <td className="py-2.5 px-4 text-center text-slate-400 font-mono">-</td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Dynamic details checklist panel (1/3 width) */}
+          <div className="xl:col-span-1 bg-white border border-slate-200 rounded-3xl p-5 shadow-xs h-fit space-y-4">
+            
+            <div className="pb-3 border-b border-slate-100">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <Eye size={15} className="text-indigo-600" />
+                Ledger Phí & Doanh Thu Sàn
+              </h3>
+              <p className="text-[9px] text-slate-400 mt-0.5 font-bold font-sans">
+                Kiểm duyệt phân rã bảng phí Shopee chi tiết đối với sản phẩm đang chọn.
+              </p>
+            </div>
+
+            {activeGroupItem ? (
+              <div className="space-y-4">
+                
+                {/* Active Info Brief */}
+                <div className="bg-indigo-50/20 border border-indigo-100/50 p-3 rounded-2xl">
+                  <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-black uppercase tracking-wide">Đang kiểm duyệt</span>
+                  <p className="text-xs font-extrabold text-slate-800 mt-1">{activeGroupItem.productName}</p>
+                  <p className="text-[10px] text-slate-405 font-mono mt-0.5 font-bold">Cổng giá bán ròng: {formatVND(activeGroupItem.lowestPrice)}</p>
+                </div>
+
+                {/* Ledger Waterfall List */}
+                <div className="space-y-2 text-xs font-mono">
+                  
+                  <div className="flex justify-between border-b border-slate-50 pb-1.5">
+                    <span className="text-slate-400 font-sans font-bold">1. Tổng giá bán từ Sheet:</span>
+                    <span className="font-extrabold text-slate-900">{formatVND(activeGroupItem.metrics.basePrice)}</span>
+                  </div>
+
+                  <div className="flex justify-between border-b border-slate-50 pb-1.5">
+                    <span className="text-slate-400 font-sans font-bold">2. Trừ vốn sản phẩm (COGS):</span>
+                    <span className="font-bold text-rose-600">-{formatVND(activeGroupItem.mainProductCogs)}</span>
+                  </div>
+
+                  {activeGroupItem.metrics.actualGiftCogs > 0 && (
+                    <div className="flex justify-between border-b border-slate-50 pb-1.5">
+                      <span className="text-slate-400 font-sans font-bold">3. Trừ vốn tặng quà (Gifts COGS):</span>
+                      <span className="font-bold text-cyan-600">-{formatVND(activeGroupItem.metrics.actualGiftCogs)}</span>
+                    </div>
+                  )}
+
+                  {/* Operational breakdown */}
+                  <div className="bg-slate-50/60 p-2.5 rounded-xl space-y-1.5 text-[11px] text-slate-600">
+                    <div className="flex justify-between">
+                      <span className="font-sans font-medium">Phí cố định ({feeConfigs.fixedFee.val}%):</span>
+                      <span>-{formatVND(activeGroupItem.metrics.fixedFee)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-sans font-medium">Hoa hồng sàn ({feeConfigs.commission.val}%):</span>
+                      <span>-{formatVND(activeGroupItem.metrics.commission)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-sans font-medium">Cổng thanh toán ({feeConfigs.paymentFee.val}%):</span>
+                      <span>-{formatVND(activeGroupItem.metrics.paymentFee)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-sans font-medium">Gói Voucher X-tra ({feeConfigs.voucherXtra.val}%):</span>
+                      <span>-{formatVND(activeGroupItem.metrics.voucherXtra)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-sans font-medium">Kho bãi FFM ({feeConfigs.ffmFee.val}%):</span>
+                      <span>-{formatVND(activeGroupItem.metrics.ffmFee)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-sans font-medium">Phí chuyển phát hạ tầng:</span>
+                      <span>-{formatVND(activeGroupItem.metrics.infraFee)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-sans font-medium">Dự phòng hoàn hàng ({feeConfigs.returnFee.val}%):</span>
+                      <span>-{formatVND(activeGroupItem.metrics.returnFee)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between pt-1 border-t border-slate-100">
+                    <span className="text-slate-800 font-sans font-bold">4. Tổng chi phí sàn tài trợ:</span>
+                    <span className="font-semibold text-amber-600">-{formatVND(activeGroupItem.metrics.totalFees)}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center sm:gap-2 pt-3 border-t border-slate-200">
+                    <span className="text-slate-800 font-sans font-extrabold text-[11px] uppercase tracking-wide">DOANH THU THUẦN (Net Pool):</span>
+                    <span className="text-teal-600 text-sm font-extrabold font-mono">{formatVND(activeGroupItem.metrics.netPool)}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center sm:gap-2 pt-2 border-b border-slate-100 pb-2">
+                    <span className="text-slate-855 font-sans font-extrabold text-[11px] uppercase tracking-wide">LỢI NHUẬN RÒNG (NM):</span>
+                    <span className={`text-sm font-extrabold font-mono ${activeGroupItem.metrics.netProfit >= 0 ? 'text-teal-600' : 'text-rose-600'}`}>
+                      {formatVND(activeGroupItem.metrics.netProfit)}
+                    </span>
+                  </div>
+
+                </div>
+
+                {/* Micro Analysis advice tags */}
+                <div className="space-y-2 bg-slate-50/40 p-3 rounded-2xl border border-slate-150/50">
+                  <span className="text-[9px] font-black uppercase text-indigo-700 tracking-wider flex items-center gap-1">
+                    <Sparkles size={11} /> Đánh gía hiệu quả:
+                  </span>
+                  <div className="text-[11px] leading-relaxed text-slate-600 font-sans font-semibold">
+                    {activeGroupItem.metrics.percentageGM < 20 ? (
+                      <p className="text-rose-600 font-bold">⚠️ Biên gộp của sản phẩm này quá thấp ({activeGroupItem.metrics.percentageGM.toFixed(1)}%). Nên sụt bớt số lượng quà tặng hoặc thương thảo tăng giá sàn bán.</p>
+                    ) : activeGroupItem.metrics.percentageNM < 10 ? (
+                      <p className="text-amber-600 font-bold">⚠️ Biên ròng (NM%) sau phí sàn Shopee chỉ đạt {activeGroupItem.metrics.percentageNM.toFixed(1)}%. Cần chú ý giảm các gói Voucher Xtra hoặc tối ưu phân bổ vận hành.</p>
+                    ) : (
+                      <p className="text-emerald-600 font-bold">✅ SKU vận hành biên rất tốt! Biên gộp %GM = {activeGroupItem.metrics.percentageGM.toFixed(0)}% và biên ròng Net Pool %NM = {activeGroupItem.metrics.percentageNM.toFixed(0)}% đạt kì vọng.</p>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            ) : (
+              <div className="text-center py-12 text-slate-400 text-[11px] font-medium leading-relaxed">
+                <Layers size={24} className="mx-auto text-slate-300 mb-2" />
+                Vui lòng paste dữ liệu từ Google Sheets sang khung bên trái để hiển thị Ledger chi tiết ở đây.
+              </div>
+            )}
+
+          </div>
+
+        </div>
+      )}
+
+      {/* Guide Info panel */}
+      {processedData.groupedItems.length === 0 && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-3xs flex flex-col items-center justify-center text-center max-w-2xl mx-auto py-10 space-y-4">
+          <div className="p-3 bg-indigo-50 text-indigo-700 rounded-2xl">
+            <Clipboard size={22} className="animate-pulse" />
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="font-extrabold text-slate-800 text-sm">Chưa có bảng sao chép nào được nạp</h3>
+            <p className="text-xs text-slate-400 max-w-md">
+              Để thẩm định cơ cấu %GM & %NM nhanh từ Google Sheet, bạn chỉ cần mở bảng Excel, bôi đen toàn bộ các cột từ <strong className="text-indigo-600">Campaign Type đến Giá thấp nhất</strong>, bấm <kbd className="px-1.5 py-0.5 bg-slate-100 rounded text-[10px] border">Ctrl+C</kbd>, rồi chuyển sang đây nhấn <kbd className="px-1.5 py-0.5 bg-indigo-100 rounded text-[10px] text-indigo-600 border border-indigo-200">Ctrl+V</kbd>.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button 
+              onClick={loadSampleData}
+              className="cursor-pointer text-xs bg-slate-900 hover:bg-slate-850 text-white font-extrabold px-4.5 py-2.5 rounded-xl transition shadow-sm"
+            >
+              Chạy bảng mẫu ngay
+            </button>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
