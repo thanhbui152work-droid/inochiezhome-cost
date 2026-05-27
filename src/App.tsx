@@ -4,12 +4,13 @@ import Dashboard from './components/Dashboard';
 import StudyCenter from './components/StudyCenter';
 import AIConsultant from './components/AIConsultant';
 import PricingCalculator from './components/PricingCalculator';
+import SheetImporter from './components/SheetImporter';
 import { 
   LayoutDashboard, Brain, Calculator, Sparkles, 
-  HelpCircle, RefreshCw, Layers, GraduationCap, Gift, ChevronRight
+  HelpCircle, RefreshCw, Layers, GraduationCap, Gift, ChevronRight, FileSpreadsheet
 } from 'lucide-react';
 
-type NavTab = 'dashboard' | 'pricing' | 'study' | 'advisor';
+type NavTab = 'dashboard' | 'pricing' | 'study' | 'advisor' | 'sheet-importer';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
@@ -141,6 +142,20 @@ export default function App() {
             <ChevronRight size={12} className={activeTab === 'advisor' ? 'opacity-100' : 'opacity-40'} />
           </button>
 
+          <button
+            onClick={() => setActiveTab('sheet-importer')}
+            className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold tracking-wide transition uppercase cursor-pointer ${
+              activeTab === 'sheet-importer'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100/50 border border-indigo-700/10'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              <FileSpreadsheet size={15} /> Nhập Từ Google Sheet
+            </span>
+            <ChevronRight size={12} className={activeTab === 'sheet-importer' ? 'opacity-100' : 'opacity-40'} />
+          </button>
+
           <div className="mt-5 p-5 bg-indigo-900 text-white rounded-2xl shadow-sm hidden lg:block leading-relaxed">
             <h4 className="font-semibold text-xs text-indigo-300 uppercase tracking-widest flex items-center gap-1.5">
               <Sparkles size={12} className="text-indigo-400" /> Grounding AI
@@ -189,6 +204,12 @@ export default function App() {
               )}
               {activeTab === 'advisor' && (
                 <AIConsultant 
+                  mainProducts={mainProducts} 
+                  cogsProducts={cogsProducts} 
+                />
+              )}
+              {activeTab === 'sheet-importer' && (
+                <SheetImporter 
                   mainProducts={mainProducts} 
                   cogsProducts={cogsProducts} 
                 />
