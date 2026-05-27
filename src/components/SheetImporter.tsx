@@ -192,17 +192,33 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
 
       if (isMain) {
         // Create new Main Group
-        // Find main product in DB to extract reliable COGS
+        // First look up in cogsProducts by SKU PHÂN LOẠI (since the user stated VP CODE corresponds to SKU PHÂN LOẠI in sheet COGS)
+        const cogsMatch = cogsProducts.find(c => 
+          (vpCode && c.skuPhanLoai === vpCode) ||
+          (barcode && c.barcode === barcode)
+        );
+
+        // Then look up in mainProducts by matching vpCode directly, or via barcode, or name
+        // Or if cogsMatch has mainSku, we can match main sku
         const match = mainProducts.find(p => 
-          (barcode && p.barcode === barcode) || 
           (vpCode && p.vpCode === vpCode) || 
+          (cogsMatch && p.vpCode === cogsMatch.mainSku) ||
+          (barcode && p.barcode === barcode) || 
           (name && p.name.toLowerCase() === name.toLowerCase())
         );
 
-        const resolvedCogs = match ? match.cogsUpdated : (listPrice * 0.55); // Fallback estimate
+        // Determine COGS: prefer match.cogsUpdated, then cogsMatch.cogs, then fallback
+        let resolvedCogs = 0;
+        if (match) {
+          resolvedCogs = match.cogsUpdated;
+        } else if (cogsMatch) {
+          resolvedCogs = cogsMatch.cogs;
+        } else {
+          resolvedCogs = listPrice * 0.55; // Fallback estimate
+        }
 
-        if (!match && name) {
-          warnings.push(`Sản phẩm chính "${name}" (${vpCode || barcode}) không khớp khớp dữ liệu gốc. Đã dùng ước lượng COGS tạm thời (55% giá catalogue).`);
+        if (!match && !cogsMatch && name) {
+          warnings.push(`Sản phẩm chính "${name}" (${vpCode || barcode}) không khớp dữ liệu gốc (hoặc cột SKU Phân Loại). Đã dùng ước lượng COGS tạm thời (55% giá catalogue).`);
         }
 
         currentMain = {
@@ -210,10 +226,10 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
           campaignType,
           barcode,
           vpCode,
-          productName: name || match?.name || 'Sản phẩm chính không tên',
+          productName: name || match?.name || cogsMatch?.name || 'Sản phẩm chính không tên',
           quantity,
-          listPrice: listPrice || match?.rsp || 0,
-          lowestPrice: lowestPrice || listPrice || match?.rsp || 0,
+          listPrice: listPrice || match?.rsp || cogsMatch?.rsp || 0,
+          lowestPrice: lowestPrice || listPrice || match?.rsp || cogsMatch?.rsp || 0,
           gifts: [],
           matchedMainProduct: match,
           mainProductCogs: resolvedCogs
@@ -226,20 +242,22 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
         }
 
         // Match gift in COGS catalog to get business COGS
+        // We look up by skuPhanLoai first since VP CODE corresponds to the SKU PHÂN LOẠI column in the COGS sheet.
         const giftMatch = cogsProducts.find(g => 
+          (vpCode && g.skuPhanLoai === vpCode) || 
           (barcode && g.barcode === barcode) || 
-          (vpCode && (g.mainSku === vpCode || g.skuPhanLoai === vpCode)) || 
+          (vpCode && g.mainSku === vpCode) || 
           (name && g.name.toLowerCase() === name.toLowerCase())
         ) || (mainProducts.find(p => 
-          (barcode && p.barcode === barcode) || 
           (vpCode && p.vpCode === vpCode) || 
+          (barcode && p.barcode === barcode) || 
           (name && p.name.toLowerCase() === name.toLowerCase())
         ) as any);
 
         const resolvedGiftCogs = giftMatch ? giftMatch.cogs : 0;
 
         if (!giftMatch && name) {
-          warnings.push(`Quà tặng "${name}" (${vpCode || barcode}) không nằm trong danh mục COGS được phê duyệt. Tạm tính phí vốn quà tặng = 0đ.`);
+          warnings.push(`Quà tặng "${name}" (${vpCode || barcode}) không nằm trong danh mục COGS/SKU Phân Loại được phê duyệt. Tạm tính phí vốn quà tặng = 0đ.`);
         }
 
         currentMain.gifts.push({
