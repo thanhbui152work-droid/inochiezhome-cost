@@ -739,8 +739,13 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
                           <td className="py-3 px-4">
                             <div className="flex flex-col">
                               <span className="font-extrabold text-slate-800 tracking-tight leading-snug line-clamp-1">{item.productName}</span>
-                              <div className="flex gap-1.5 items-center mt-1 text-[9px] font-mono font-bold">
+                              <div className="flex gap-1.5 items-center mt-1 text-[9px] font-mono font-bold flex-wrap">
                                 <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 px-1.5 rounded uppercase">Main</span>
+                                {item.campaignType && (
+                                  <span className="bg-amber-50 border border-amber-200 text-amber-800 px-1.5 rounded uppercase">
+                                    ⚡ {item.campaignType}
+                                  </span>
+                                )}
                                 <span className="text-slate-400">VP: {item.vpCode || 'N/A'}</span>
                               </div>
                             </div>
@@ -803,8 +808,15 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
               <div className="space-y-4">
                 
                 {/* Active Info Brief */}
-                <div className="bg-indigo-50/20 border border-indigo-100/50 p-3 rounded-2xl">
-                  <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-black uppercase tracking-wide">Đang kiểm duyệt</span>
+                <div className="bg-indigo-50/20 border border-indigo-100/50 p-3 rounded-2xl space-y-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-black uppercase tracking-wide">Đang kiểm duyệt</span>
+                    {activeGroupItem.campaignType && (
+                      <span className="text-[8px] bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded font-black uppercase tracking-wide">
+                        Chiến dịch: {activeGroupItem.campaignType}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs font-extrabold text-slate-800 mt-1">{activeGroupItem.productName}</p>
                   <p className="text-[10px] text-slate-405 font-mono mt-0.5 font-bold">Cổng giá bán ròng: {formatVND(activeGroupItem.lowestPrice)}</p>
                 </div>
