@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MainProduct, CogsProduct } from './types';
+import { MainProduct, CogsProduct, StockRecord } from './types';
 import Dashboard from './components/Dashboard';
 import StudyCenter from './components/StudyCenter';
 import AIConsultant from './components/AIConsultant';
@@ -17,6 +17,7 @@ export default function App() {
   const [mainProducts, setMainProducts] = useState<MainProduct[]>([]);
   const [tiktokProducts, setTiktokProducts] = useState<MainProduct[]>([]);
   const [cogsProducts, setCogsProducts] = useState<CogsProduct[]>([]);
+  const [stockRecords, setStockRecords] = useState<StockRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sheetSource, setSheetSource] = useState<string>('live_google_sheet');
 
@@ -30,6 +31,7 @@ export default function App() {
         setMainProducts(data.main);
         setTiktokProducts(data.tiktok || data.main);
         setCogsProducts(data.cogs);
+        setStockRecords(data.stock || []);
         setSheetSource(data.source || 'live_google_sheet');
       } else {
         throw new Error("Invalid schema received");
@@ -81,92 +83,85 @@ export default function App() {
       </nav>
 
       {/* Main Core Layout Grid */}
-      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col lg:flex-row gap-6">
+      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col gap-6">
         
-        {/* Left Sidebar Menu Rail */}
-        <div className="w-full lg:w-64 shrink-0 flex flex-col gap-2">
-          
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold tracking-wide transition uppercase cursor-pointer ${
-              activeTab === 'dashboard'
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100/50 border border-indigo-700/10'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <LayoutDashboard size={15} /> Bảng Giá & Quà Tặng
-            </span>
-            <ChevronRight size={12} className={activeTab === 'dashboard' ? 'opacity-100' : 'opacity-40'} />
-          </button>
+        {/* Horizontal Navigation Menu */}
+        <div className="sticky top-14 z-30 bg-white/95 backdrop-blur-xs border border-slate-200/95 rounded-2xl p-2 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4 select-none">
+          <div className="w-full flex items-center gap-1.5 overflow-x-auto pb-1.5 md:pb-0 scrollbar-thin [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-slate-50 [&::-webkit-scrollbar-thumb]:bg-slate-200 hover:[&::-webkit-scrollbar-thumb]:bg-indigo-200 [&::-webkit-scrollbar-thumb]:rounded-full whitespace-nowrap">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase transition-all duration-150 shrink-0 cursor-pointer ${
+                activeTab === 'dashboard'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-150/40 border border-indigo-700/10'
+                  : 'bg-white border border-slate-200/80 text-slate-600 hover:bg-slate-50 hover:border-slate-350 hover:text-slate-900 shadow-3xs'
+              }`}
+            >
+              <LayoutDashboard size={14} />
+              <span>Bảng Giá & Quà Tặng</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('pricing')}
-            className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold tracking-wide transition uppercase cursor-pointer ${
-              activeTab === 'pricing'
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100/50 border border-indigo-700/10'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Calculator size={15} /> Bảng Tính Giá Chi Tiết
-            </span>
-            <ChevronRight size={12} className={activeTab === 'pricing' ? 'opacity-100' : 'opacity-40'} />
-          </button>
+            <button
+              onClick={() => setActiveTab('pricing')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase transition-all duration-150 shrink-0 cursor-pointer ${
+                activeTab === 'pricing'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-150/40 border border-indigo-700/10'
+                  : 'bg-white border border-slate-200/80 text-slate-600 hover:bg-slate-50 hover:border-slate-350 hover:text-slate-900 shadow-3xs'
+              }`}
+            >
+              <Calculator size={14} />
+              <span>Bảng Tính Giá Chi Tiết</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('study')}
-            className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold tracking-wide transition uppercase cursor-pointer ${
-              activeTab === 'study'
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100/50 border border-indigo-700/10'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <GraduationCap size={15} /> Cẩm Nang & Luật Sàn
-            </span>
-            <ChevronRight size={12} className={activeTab === 'study' ? 'opacity-100' : 'opacity-40'} />
-          </button>
+            <button
+              onClick={() => setActiveTab('study')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase transition-all duration-150 shrink-0 cursor-pointer ${
+                activeTab === 'study'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-150/40 border border-indigo-700/10'
+                  : 'bg-white border border-slate-200/80 text-slate-600 hover:bg-slate-50 hover:border-slate-350 hover:text-slate-900 shadow-3xs'
+              }`}
+            >
+              <GraduationCap size={14} />
+              <span>Cẩm Nang & Luật Sàn</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('advisor')}
-            className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold tracking-wide transition uppercase cursor-pointer ${
-              activeTab === 'advisor'
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100/50 border border-indigo-700/10'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Sparkles size={15} /> Cố Vấn Chiến Lược AI
-            </span>
-            <ChevronRight size={12} className={activeTab === 'advisor' ? 'opacity-100' : 'opacity-40'} />
-          </button>
+            <button
+              onClick={() => setActiveTab('advisor')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase transition-all duration-150 shrink-0 cursor-pointer ${
+                activeTab === 'advisor'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-150/40 border border-indigo-700/10'
+                  : 'bg-white border border-slate-200/80 text-slate-600 hover:bg-slate-50 hover:border-slate-350 hover:text-slate-900 shadow-3xs'
+              }`}
+            >
+              <Sparkles size={14} />
+              <span>Cố Vấn Chiến Lược AI</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('sheet-importer')}
-            className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold tracking-wide transition uppercase cursor-pointer ${
-              activeTab === 'sheet-importer'
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100/50 border border-indigo-700/10'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <FileSpreadsheet size={15} /> Nhập Từ Google Sheet
-            </span>
-            <ChevronRight size={12} className={activeTab === 'sheet-importer' ? 'opacity-100' : 'opacity-40'} />
-          </button>
+            <button
+              onClick={() => setActiveTab('sheet-importer')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase transition-all duration-150 shrink-0 cursor-pointer ${
+                activeTab === 'sheet-importer'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-150/40 border border-indigo-700/10'
+                  : 'bg-white border border-slate-200/80 text-slate-600 hover:bg-slate-50 hover:border-slate-350 hover:text-slate-900 shadow-3xs'
+              }`}
+            >
+              <FileSpreadsheet size={14} />
+              <span>Nhập Từ Google Sheet</span>
+            </button>
+          </div>
 
-          <div className="mt-5 p-5 bg-indigo-900 text-white rounded-2xl shadow-sm hidden lg:block leading-relaxed">
-            <h4 className="font-semibold text-xs text-indigo-300 uppercase tracking-widest flex items-center gap-1.5">
-              <Sparkles size={12} className="text-indigo-400" /> Grounding AI
-            </h4>
-            <p className="text-[11px] text-indigo-100 mt-2">
-              Bản điều phối tích hợp rà quét giá đối thủ thời gian thực và cân bằng định lượng vật phẩm quà tặng Inochi nhằm bảo đảm biên lợi nhuận ròng tốt nhất.
-            </p>
+          {/* Quick Info text / small badge replacing Grounding AI */}
+          <div className="hidden lg:flex items-center gap-2 pr-2 text-right shrink-0">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-600"></span>
+            </span>
+            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+              Grounding AI Active
+            </span>
           </div>
         </div>
 
-        {/* Right Active Panel Content Container */}
+        {/* Active Panel Content Container */}
         <div className="flex-1 flex flex-col min-w-0">
           {isLoading ? (
             <div className="bg-white border border-slate-200 rounded-2xl p-16 text-center space-y-4 shadow-sm my-auto">
@@ -194,6 +189,7 @@ export default function App() {
                   shopeeProducts={mainProducts} 
                   tiktokProducts={tiktokProducts} 
                   cogsProducts={cogsProducts} 
+                  stockRecords={stockRecords}
                 />
               )}
 
@@ -212,6 +208,7 @@ export default function App() {
                 <SheetImporter 
                   mainProducts={mainProducts} 
                   cogsProducts={cogsProducts} 
+                  stockRecords={stockRecords}
                 />
               )}
             </div>
