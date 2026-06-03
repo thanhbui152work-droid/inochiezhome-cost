@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { MainProduct, CogsProduct } from '../types';
+import { MainProduct, CogsProduct, StockRecord } from '../types';
 import { 
   Clipboard, Table, FileSpreadsheet, AlertCircle, CheckCircle, 
   Settings, HelpCircle, Info, TrendingUp, Coins, ArrowRight, 
@@ -9,6 +9,7 @@ import {
 interface SheetImporterProps {
   mainProducts: MainProduct[];
   cogsProducts: CogsProduct[];
+  stockRecords?: StockRecord[];
 }
 
 interface FeeItem {
@@ -39,7 +40,7 @@ interface GroupedMainItem {
   mainProductCogs: number;
 }
 
-export default function SheetImporter({ mainProducts, cogsProducts }: SheetImporterProps) {
+export default function SheetImporter({ mainProducts, cogsProducts, stockRecords }: SheetImporterProps) {
   // Pasted raw spreadsheet data state
   const [pastedText, setPastedText] = useState<string>('');
   
@@ -746,7 +747,27 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
                                     ⚡ {item.campaignType}
                                   </span>
                                 )}
-                                <span className="text-slate-400">VP: {item.vpCode || 'N/A'}</span>
+                                <span className="text-slate-400 font-bold">VP: {item.vpCode || 'N/A'}</span>
+                                {stockRecords && (
+                                  (() => {
+                                    const matching = stockRecords.filter(s => s.skuPhanLoai === item.vpCode);
+                                    const total = matching.reduce((sum, s) => sum + s.quantity, 0);
+                                    const south = matching.find(s => s.warehouse === 'BMVN_HCM_BTN')?.quantity || 0;
+                                    const north = matching.find(s => s.warehouse === 'BMVN_BN_VSIP')?.quantity || 0;
+                                    if (total > 0) {
+                                      return (
+                                        <span className="bg-teal-50 border border-teal-150 text-teal-800 px-1.5 rounded text-[8px] font-sans font-extrabold tracking-tight" title={`Miền Bắc: ${north} | Miền Nam: ${south}`}>
+                                          Tồn kho: {total} (Bắc: {north} | Nam: {south})
+                                        </span>
+                                      );
+                                    }
+                                    return (
+                                      <span className="bg-rose-50 border border-rose-150 text-rose-700 px-1.5 rounded text-[8px] font-sans font-extrabold tracking-tight">
+                                        Hết tồn kho
+                                      </span>
+                                    );
+                                  })()
+                                )}
                               </div>
                             </div>
                           </td>
@@ -767,7 +788,29 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
                               <div className="flex items-center gap-1.5">
                                 <CornerDownRight size={12} className="text-indigo-400 shrink-0" />
                                 <div className="min-w-0">
-                                  <p className="font-semibold text-slate-700 leading-tight line-clamp-1">{gift.productName}</p>
+                                  <p className="font-semibold text-slate-700 leading-tight line-clamp-1 flex items-center gap-1.5 flex-wrap">
+                                    <span>{gift.productName}</span>
+                                    {stockRecords && (
+                                      (() => {
+                                        const matching = stockRecords.filter(s => s.skuPhanLoai === gift.vpCode);
+                                        const total = matching.reduce((sum, s) => sum + s.quantity, 0);
+                                        const south = matching.find(s => s.warehouse === 'BMVN_HCM_BTN')?.quantity || 0;
+                                        const north = matching.find(s => s.warehouse === 'BMVN_BN_VSIP')?.quantity || 0;
+                                        if (total > 0) {
+                                          return (
+                                            <span className="text-[8px] text-teal-700 bg-emerald-50 border border-emerald-100 px-1 rounded font-bold" title={`Bắc: ${north} | Nam: ${south}`}>
+                                              Kho: {total} (B:{north}|N:{south})
+                                            </span>
+                                          );
+                                        }
+                                        return (
+                                          <span className="text-[8px] text-rose-700 bg-rose-50 border border-rose-100 px-1 rounded font-bold">
+                                            Hết hàng
+                                          </span>
+                                        );
+                                      })()
+                                    )}
+                                  </p>
                                   <p className="text-[8px] text-slate-400 font-mono font-bold mt-0.5">SL: {gift.quantity} x Sàn trợ giá: {formatVND(gift.lowestPrice)}</p>
                                 </div>
                               </div>
@@ -907,6 +950,70 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
                     )}
                   </div>
                 </div>
+
+                {/* Warehouse Stock detail */}
+                {stockRecords && (
+                  (() => {
+                    const mainStock = stockRecords.filter(s => s.skuPhanLoai === activeGroupItem.vpCode);
+                    const totalMain = mainStock.reduce((sum, s) => sum + s.quantity, 0);
+                    const southMain = mainStock.find(s => s.warehouse === 'BMVN_HCM_BTN')?.quantity || 0;
+                    const northMain = mainStock.find(s => s.warehouse === 'BMVN_BN_VSIP')?.quantity || 0;
+
+                    return (
+                      <div className="space-y-2 bg-slate-50/40 p-3 rounded-2xl border border-slate-150/50">
+                        <span className="text-[9px] font-black uppercase text-indigo-750 tracking-wider flex items-center gap-1">
+                          📦 THÔNG TIN TỒN KHO THỰC TẾ:
+                        </span>
+                        <div className="space-y-1.5 text-xs">
+                          <div className="flex justify-between items-center bg-white p-1.5 rounded-lg border border-slate-100">
+                            <span className="text-slate-500 font-semibold font-sans">Miền Nam (BMVN_HCM_BTN):</span>
+                            <span className={`font-semibold font-mono ${southMain > 15 ? 'text-teal-700 font-bold' : southMain > 0 ? 'text-amber-700 font-bold' : 'text-slate-400 font-normal'}`}>
+                              {southMain} chiếc
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center bg-white p-1.5 rounded-lg border border-slate-100">
+                            <span className="text-slate-500 font-semibold font-sans">Miền Bắc (BMVN_BN_VSIP):</span>
+                            <span className={`font-semibold font-mono ${northMain > 15 ? 'text-teal-700 font-bold' : northMain > 0 ? 'text-amber-700 font-bold' : 'text-slate-400 font-normal'}`}>
+                              {northMain} chiếc
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center bg-teal-50 border border-teal-100 p-1.5 rounded-lg">
+                            <span className="text-teal-900 font-extrabold font-sans">Tổng tồn kho toàn quốc:</span>
+                            <span className={`font-black font-mono ${totalMain > 30 ? 'text-teal-700 font-extrabold' : totalMain > 0 ? 'text-amber-700 font-extrabold' : 'text-rose-600 font-extrabold'}`}>
+                              {totalMain} chiếc
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Gift stock breakdown if any */}
+                        {activeGroupItem.gifts.length > 0 && (
+                          <div className="mt-3 pt-2 border-t border-slate-205 space-y-1.5">
+                            <span className="text-[8px] font-black uppercase text-slate-500 tracking-wider block">
+                              🎁 TỒN KHO QUÀ TẶNG KÈM THEO:
+                            </span>
+                            {activeGroupItem.gifts.map((g, gi) => {
+                              const gStock = stockRecords.filter(s => s.skuPhanLoai === g.vpCode);
+                              const totalG = gStock.reduce((sum, s) => sum + s.quantity, 0);
+                              const southG = gStock.find(s => s.warehouse === 'BMVN_HCM_BTN')?.quantity || 0;
+                              const northG = gStock.find(s => s.warehouse === 'BMVN_BN_VSIP')?.quantity || 0;
+                              return (
+                                <div key={gi} className="text-[10px] bg-white p-2 rounded-xl border border-slate-100 space-y-1">
+                                  <div className="font-extrabold text-slate-850 line-clamp-1">{g.productName}</div>
+                                  <div className="text-[8px] text-slate-400 font-mono font-bold">SKU: {g.vpCode || 'N/A'}</div>
+                                  <div className="flex justify-between text-slate-500 pt-0.5 text-[9px]">
+                                    <span>Nam (HCM): <strong className="text-slate-700">{southG}</strong></span>
+                                    <span>Bắc (BN): <strong className="text-slate-700">{northG}</strong></span>
+                                    <span className="text-indigo-600 font-bold">Tổng: <strong className="text-indigo-700">{totalG}</strong></span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
+                )}
 
               </div>
             ) : (
