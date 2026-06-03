@@ -445,7 +445,13 @@ export default function Dashboard({ mainProducts, cogsProducts, isLoading, onRef
                             src={(activeVariant.img && activeVariant.img.trim() !== "" && !activeVariant.img.includes("placeholder")) ? activeVariant.img.trim() : p.img} 
                             alt={p.name}
                             referrerPolicy="no-referrer"
-                            className="w-full h-full object-cover transition duration-300 hover:scale-103"
+                            className="w-full h-full object-cover transition duration-300 hover:scale-103 cursor-zoom-in"
+                            onClick={() => {
+                              const imgSrc = (activeVariant.img && activeVariant.img.trim() !== "" && !activeVariant.img.includes("placeholder")) ? activeVariant.img.trim() : p.img;
+                              if (typeof window !== 'undefined' && window.showImagePreview) {
+                                window.showImagePreview(imgSrc);
+                              }
+                            }}
                             onError={(e) => {
                               (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=500";
                             }}
@@ -703,7 +709,12 @@ export default function Dashboard({ mainProducts, cogsProducts, isLoading, onRef
                           src={p.img} 
                           alt={p.name}
                           referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover transition duration-300 hover:scale-103"
+                          className="w-full h-full object-cover transition duration-300 hover:scale-103 cursor-zoom-in"
+                          onClick={() => {
+                            if (typeof window !== 'undefined' && window.showImagePreview) {
+                              window.showImagePreview(p.img);
+                            }
+                          }}
                           onError={(e) => {
                             // simple fallback placeholder if sheet URL fails
                             (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=400";

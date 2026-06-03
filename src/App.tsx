@@ -7,8 +7,15 @@ import PricingCalculator from './components/PricingCalculator';
 import SheetImporter from './components/SheetImporter';
 import { 
   LayoutDashboard, Brain, Calculator, Sparkles, 
-  HelpCircle, RefreshCw, Layers, GraduationCap, Gift, ChevronRight, FileSpreadsheet
+  HelpCircle, RefreshCw, Layers, GraduationCap, Gift, ChevronRight, FileSpreadsheet,
+  ArrowUp
 } from 'lucide-react';
+
+declare global {
+  interface Window {
+    showImagePreview?: (src: string) => void;
+  }
+}
 
 type NavTab = 'dashboard' | 'pricing' | 'study' | 'advisor' | 'sheet-importer';
 
@@ -20,6 +27,8 @@ export default function App() {
   const [stockRecords, setStockRecords] = useState<StockRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sheetSource, setSheetSource] = useState<string>('live_google_sheet');
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // Load backend Google Sheet data on mount
   const loadSheetData = async () => {
@@ -47,6 +56,36 @@ export default function App() {
   useEffect(() => {
     loadSheetData();
   }, []);
+
+  // Listen for scroll to show Back to Top button
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 300) {
+        setShowScrollTop(true);
+      } else {
+        setShowScrollTop(false);
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Bind global image preview action
+  useEffect(() => {
+    window.showImagePreview = (src: string) => {
+      setPreviewImage(src);
+    };
+    return () => {
+      delete window.showImagePreview;
+    };
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col antialiased">
@@ -221,6 +260,46 @@ export default function App() {
       <footer className="bg-white/40 border-t border-slate-200 py-3 text-center text-[10px] text-slate-400 font-mono tracking-wider">
         Copyright © 2026 Inochi Enterprise Solution. All rights reserved.
       </footer>
+
+      {/* Floating Back to Top Button */}
+      {showScrollTop && (
+        <button
+          id="back-to-top-btn"
+          onClick={scrollToTop}
+          className="fixed bottom-6 right-6 z-50 p-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg hover:shadow-indigo-500/30 border border-indigo-500/20 hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center group"
+          title="Lên đầu trang"
+        >
+          <ArrowUp size={18} className="transition-transform duration-200 group-hover:-translate-y-0.5" />
+        </button>
+      )}
+
+      {/* Elegant Infinite Image Lightbox Modal */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-[10000] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in cursor-zoom-out select-none"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center gap-3">
+            <button 
+              onClick={() => setPreviewImage(null)}
+              className="absolute -top-12 right-0 bg-white/10 hover:bg-white/20 active:scale-95 text-white p-2 rounded-full transition cursor-pointer"
+              aria-label="Đóng"
+            >
+              <span className="text-xl font-bold px-1.5">✕</span>
+            </button>
+            <img 
+              src={previewImage} 
+              alt="Bản xem trước" 
+              className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-white/10"
+              onClick={(e) => e.stopPropagation()}
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=600";
+              }}
+            />
+          </div>
+        </div>
+      )}
 
     </div>
   );

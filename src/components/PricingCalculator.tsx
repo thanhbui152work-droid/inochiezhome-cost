@@ -1832,7 +1832,13 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                     src={getProductImage(activeLine.product)}
                     alt={activeLine.product.name}
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover cursor-zoom-in hover:opacity-90"
+                    onClick={() => {
+                      const img = getProductImage(activeLine.product);
+                      if (typeof window !== 'undefined' && window.showImagePreview) {
+                        window.showImagePreview(img);
+                      }
+                    }}
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=200";
                     }}
@@ -3004,6 +3010,13 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                       const minCogs = Math.min(...item.variants.map(v => v.cogs));
                       const maxCogs = Math.max(...item.variants.map(v => v.cogs));
                       const titleName = item.variants[0]?.name || item.mainSku;
+                      
+                      // Calculate total inventory of all variants of this group
+                      const groupStockTotal = item.variants.reduce((acc, v) => {
+                        const matching = stockRecords ? stockRecords.filter(s => s.skuPhanLoai === v.skuPhanLoai) : [];
+                        return acc + matching.reduce((sum, s) => sum + s.quantity, 0);
+                      }, 0);
+
                       return (
                         <div
                           key={item.mainSku}
@@ -3014,7 +3027,15 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                               : 'bg-white border-slate-200 hover:border-indigo-400 hover:bg-slate-50'
                           }`}
                         >
-                          <div className="w-11 h-11 rounded-lg border border-slate-150 overflow-hidden shrink-0 flex items-center justify-center bg-white shadow-3xs">
+                          <div 
+                            className="w-11 h-11 rounded-lg border border-slate-150 overflow-hidden shrink-0 flex items-center justify-center bg-white shadow-3xs cursor-zoom-in"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (typeof window !== 'undefined' && window.showImagePreview) {
+                                window.showImagePreview(item.img || "https://images.unsplash.com/photo-1544233726-9f1d2b27be8b?w=600");
+                              }
+                            }}
+                          >
                             <img 
                               src={item.img || "https://images.unsplash.com/photo-1544233726-9f1d2b27be8b?w=60"} 
                               alt={item.mainSku}
@@ -3035,12 +3056,19 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                                 {item.variants.length} mã
                               </span>
                             </div>
-                            <h5 className="font-extrabold text-slate-800 text-[11px] mt-1 truncate leading-snug">
+                            <h5 className="font-extrabold text-slate-800 text-[11px] mt-1 truncate leading-snug text-left">
                               {titleName}
                             </h5>
-                            <span className="text-[9px] text-slate-450 font-mono font-bold block mt-0.5">
-                              Cost: {minCogs === maxCogs ? formatVND(minCogs) : `${formatVND(minCogs)} - ${formatVND(maxCogs)}`}
-                            </span>
+                            <div className="flex items-center justify-between gap-1 mt-1 text-[9px] leading-none">
+                              <span className="text-slate-450 font-mono font-bold block">
+                                Cost: {minCogs === maxCogs ? formatVND(minCogs) : `${formatVND(minCogs)} - ${formatVND(maxCogs)}`}
+                              </span>
+                              {stockRecords && (
+                                <span className={`px-1 rounded-sm font-sans font-extrabold leading-none text-[8.5px] py-0.5 shrink-0 ${groupStockTotal > 0 ? 'bg-teal-50 text-teal-700 font-bold border border-teal-150' : 'bg-rose-50 text-rose-600 font-bold border border-rose-150'}`}>
+                                  Tồn: {groupStockTotal}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
@@ -3057,12 +3085,17 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                     {/* Selected Group Header Summary */}
                     <div className="bg-white border border-slate-200/60 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-3xs">
                       <div className="flex gap-3 items-center">
-                        <div className="w-14 h-14 rounded-xl border border-slate-150 overflow-hidden bg-white shrink-0 flex items-center justify-center">
+                        <div className="w-14 h-14 rounded-xl border border-slate-150 overflow-hidden bg-white shrink-0 flex items-center justify-center cursor-zoom-in">
                           <img 
                             src={currentGroup.img} 
                             alt={currentGroup.mainSku}
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover"
+                            onClick={() => {
+                              if (typeof window !== 'undefined' && window.showImagePreview) {
+                                window.showImagePreview(currentGroup.img);
+                              }
+                            }}
                             onError={(e) => {
                               (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=100";
                             }}
