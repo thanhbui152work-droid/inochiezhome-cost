@@ -1,14 +1,17 @@
 import React, { useState, useMemo } from 'react';
-import { MainProduct, CogsProduct } from '../types';
+import { createPortal } from 'react-dom';
+import { MainProduct, CogsProduct, StockRecord } from '../types';
 import { 
   Calculator, Settings, Gift, HelpCircle, Info, CheckCircle, 
-  PlusCircle, Trash2, ArrowRightLeft, DollarSign, Percent, AlertCircle, Sparkles, Download, Plus
+  PlusCircle, Trash2, ArrowRightLeft, DollarSign, Percent, AlertCircle, Sparkles, Download, Plus,
+  ListFilter
 } from 'lucide-react';
 
 interface PricingCalculatorProps {
   shopeeProducts: MainProduct[];
   tiktokProducts: MainProduct[];
   cogsProducts: CogsProduct[];
+  stockRecords?: StockRecord[];
 }
 
 interface FeeItem {
@@ -46,7 +49,7 @@ interface ShopVoucher {
   active: boolean;
 }
 
-export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogsProducts }: PricingCalculatorProps) {
+export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogsProducts, stockRecords }: PricingCalculatorProps) {
   const [activePlatform, setActivePlatform] = useState<'shopee' | 'tiktok'>('shopee');
 
   const activeProducts = useMemo(() => {
@@ -199,6 +202,30 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
   const [giftPickerOpen, setGiftPickerOpen] = useState<boolean>(false);
   const [giftSearchTerm, setGiftSearchTerm] = useState<string>('');
   const [giftBudgetFilter, setGiftBudgetFilter] = useState<'all' | 'suitable' | 'exceeded'>('all');
+  const [selectedGiftGroupSku, setSelectedGiftGroupSku] = useState<string | null>(null);
+
+  const tableContainerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.deltaY !== 0 && e.deltaX === 0) {
+        const canScrollLeft = container.scrollLeft > 0;
+        const canScrollRight = container.scrollLeft < (container.scrollWidth - container.clientWidth - 1);
+        if ((e.deltaY > 0 && canScrollRight) || (e.deltaY < 0 && canScrollLeft)) {
+          e.preventDefault();
+          container.scrollLeft += e.deltaY;
+        }
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
 
   // Shop vouchers managed state (min spend condition & cap reduction & priorities order)
   const [shopVouchers, setShopVouchers] = useState<ShopVoucher[]>([
@@ -563,16 +590,75 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
     // 3. Filter by search term if active
     if (!giftSearchTerm.trim()) return mapped;
 
-    const query = giftSearchTerm.toLowerCase().trim();
-    return mapped.filter(item => {
-      const matchMain = item.mainSku.toLowerCase().includes(query) || item.category.toLowerCase().includes(query);
-      const matchVariant = item.variants.some(v => 
-        v.name.toLowerCase().includes(query) || 
-        v.skuPhanLoai.toLowerCase().includes(query)
-      );
-      return matchMain || matchVariant;
-    });
+    const rawTerm = giftSearchTerm.trim();
+    let isMultiSearch = false;
+    let tokens: string[] = [];
+
+    if (rawTerm.includes(',') || rawTerm.includes(';') || rawTerm.includes('\n') || rawTerm.includes('\t')) {
+      isMultiSearch = true;
+      tokens = rawTerm.split(/[,;\n\t\r]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+    } else {
+      // If delimited by spaces, check if it looks like a list of SKUs/Codes
+      const words = rawTerm.split(/\s+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+      if (words.length > 1) {
+        // If at least one word looks like a code (contains dot, number, or length >= 5)
+        const hasCodeSpec = words.some(w => w.includes('.') || w.match(/\d/) || w.length >= 5);
+        if (hasCodeSpec) {
+          isMultiSearch = true;
+          tokens = words;
+        }
+      }
+    }
+
+    if (isMultiSearch && tokens.length > 0) {
+      return mapped.filter(item => {
+        return tokens.some(tok => {
+          const matchMain = item.mainSku.toLowerCase().includes(tok) || item.category.toLowerCase().includes(tok);
+          const matchVariant = item.variants.some(v => 
+            v.name.toLowerCase().includes(tok) || 
+            v.skuPhanLoai.toLowerCase().includes(tok)
+          );
+          return matchMain || matchVariant;
+        });
+      });
+    } else {
+      const query = rawTerm.toLowerCase();
+      return mapped.filter(item => {
+        const matchMain = item.mainSku.toLowerCase().includes(query) || item.category.toLowerCase().includes(query);
+        const matchVariant = item.variants.some(v => 
+          v.name.toLowerCase().includes(query) || 
+          v.skuPhanLoai.toLowerCase().includes(query)
+        );
+        return matchMain || matchVariant;
+      });
+    }
   }, [inochiGifts, giftSearchTerm, giftBudgetFilter, activeLineMetrics, feeConfigs.giftQuota]);
+
+  const currentGroup = useMemo(() => {
+    if (filteredGroupedGifts.length === 0) return null;
+    const found = filteredGroupedGifts.find(g => g.mainSku === selectedGiftGroupSku);
+    return found || filteredGroupedGifts[0];
+  }, [filteredGroupedGifts, selectedGiftGroupSku]);
+
+  React.useEffect(() => {
+    if (giftPickerOpen && filteredGroupedGifts.length > 0) {
+      const exists = filteredGroupedGifts.some(g => g.mainSku === selectedGiftGroupSku);
+      if (!exists || !selectedGiftGroupSku) {
+        setSelectedGiftGroupSku(filteredGroupedGifts[0]?.mainSku || null);
+      }
+    }
+  }, [giftPickerOpen, filteredGroupedGifts, selectedGiftGroupSku]);
+
+  React.useEffect(() => {
+    if (giftPickerOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [giftPickerOpen]);
 
   // Handle product selected changes
   const handleProductChange = (prodVpCode: string) => {
@@ -2456,7 +2542,7 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
           </button>
         </div>
 
-        <div className="overflow-x-auto w-full">
+        <div ref={tableContainerRef} className="overflow-x-auto w-full">
           <table className="w-full text-left border-collapse min-w-[2100px]">
             <thead>
               <tr className="bg-slate-100 text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200">
@@ -2500,7 +2586,29 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                     {/* Stuck Left product label col */}
                     <td className="py-3 px-4 font-bold text-slate-800 sticky left-0 shadow-[2px_0_5px_rgba(0,0,0,0.02)] z-10 bg-white group-hover:bg-indigo-50">
                       <div className="truncate max-w-[190px]">{line.productName}</div>
-                      <div className="text-[10px] text-slate-400 font-normal font-mono mt-0.5">{line.vpCode}</div>
+                      <div className="text-[10px] text-slate-400 font-normal font-mono mt-0.5 flex flex-wrap items-center gap-1.5">
+                        <span>{line.vpCode}</span>
+                        {stockRecords && (
+                          (() => {
+                            const matching = stockRecords.filter(s => s.skuPhanLoai === line.vpCode);
+                            const total = matching.reduce((sum, s) => sum + s.quantity, 0);
+                            const south = matching.find(s => s.warehouse === 'BMVN_HCM_BTN')?.quantity || 0;
+                            const north = matching.find(s => s.warehouse === 'BMVN_BN_VSIP')?.quantity || 0;
+                            if (total > 0) {
+                              return (
+                                <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-1 rounded text-[8px] font-bold font-sans" title={`Bắc: ${north} | Nam: ${south}`}>
+                                  Tồn: {total} (B: {north} | N: {south})
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="bg-rose-50 border border-rose-105 text-rose-700 px-1 rounded text-[8px] font-bold font-sans">
+                                Hết hàng (0)
+                              </span>
+                            );
+                          })()
+                        )}
+                      </div>
                     </td>
                     
                     <td className="py-3 px-3 border-r border-slate-150 font-mono text-right text-slate-500">{formatVND(line.rsp)}</td>
@@ -2760,9 +2868,9 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
 
       {/* ----------------------------------------------------------- */}
       {/* 4. Elegant Overlay Drawer/Modal to Select Gift with Budget Indicator */}
-      {giftPickerOpen && activeLineMetrics && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs transition duration-350 select-none">
-          <div className="bg-white rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-slate-200/60 animate-fade-in">
+      {giftPickerOpen && activeLineMetrics && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 md:p-10 bg-slate-950/65 backdrop-blur-xs animate-fade-in font-sans">
+          <div className="bg-white rounded-3xl max-w-6xl w-full h-[85vh] max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border border-slate-200/60 transition-all">
             {/* Modal Header & Search */}
             <div className="px-6 py-5 border-b border-slate-200 bg-slate-50/80">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -2854,177 +2962,285 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
 
             </div>
 
-            {/* Modal Scroll area list of gifts */}
-            <div className="p-6 overflow-y-auto flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 bg-slate-50/50">
+            {/* Modal Two-Panel Area */}
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0 bg-slate-50/30">
               
-              {/* Option to clear gift pairs */}
-              <div 
-                onClick={() => {
-                  handleSelectGift(null);
-                  setGiftSearchTerm('');
-                }}
-                className="cursor-pointer col-span-full border-2 border-dashed border-slate-200 hover:border-slate-400 bg-white rounded-2xl p-5 flex items-center justify-center text-center hover:bg-slate-50 transition duration-150"
-              >
-                <div className="space-y-1">
-                  <span className="font-extrabold text-sm text-slate-700 block">Không áp dụng quà</span>
-                  <span className="text-[10px] text-slate-400 block mt-1">Sẽ không phân bổ chi phí quà tặng, tối ưu hóa biên lợi nhuận ròng sàn</span>
+              {/* Left Pane: Gift Groups List */}
+              <div className="w-full md:w-[350px] shrink-0 border-r border-slate-200/60 bg-white flex flex-col h-[200px] md:h-full min-h-0">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-150/80 flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <span>Nhóm quà ({filteredGroupedGifts.length})</span>
+                  <span className="text-[9px] text-indigo-600 bg-indigo-100/50 px-2 py-0.5 rounded-full lowercase normal-case">xem phân loại</span>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-3 space-y-2 pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-slate-50 [&::-webkit-scrollbar-thumb]:bg-slate-200 hover:[&::-webkit-scrollbar-thumb]:bg-slate-350 [&::-webkit-scrollbar-thumb]:rounded-full">
+                  {/* Option to clear gift pairs, placed at top of list */}
+                  <div 
+                    onClick={() => {
+                      handleSelectGift(null);
+                      setGiftSearchTerm('');
+                    }}
+                    className={`cursor-pointer border border-dashed rounded-xl p-3 flex items-center gap-2.5 transition duration-150 ${
+                      activeLine.selectedGifts?.length === 0 || !activeLine.selectedGifts
+                        ? 'bg-rose-50 border-rose-450 ring-1 ring-rose-300 text-rose-700'
+                        : 'bg-white border-rose-300 hover:border-rose-450 hover:bg-rose-50/20 text-slate-600 hover:text-rose-600'
+                    }`}
+                  >
+                    <div className="w-6 h-6 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+                      <span className="text-[10px] font-black text-rose-750">✕</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-extrabold text-xs text-rose-600 block">Không áp dụng quà tặng</span>
+                      <span className="text-[9px] text-slate-400 block mt-0.5">Tối ưu biên phần trăm net</span>
+                    </div>
+                  </div>
+
+                  {filteredGroupedGifts.length === 0 ? (
+                    <div className="py-8 text-center text-slate-400">
+                      <span className="block text-xs font-semibold">Không tìm thấy nhóm quà</span>
+                    </div>
+                  ) : (
+                    filteredGroupedGifts.map((item) => {
+                      const isSelected = currentGroup && currentGroup.mainSku === item.mainSku;
+                      const minCogs = Math.min(...item.variants.map(v => v.cogs));
+                      const maxCogs = Math.max(...item.variants.map(v => v.cogs));
+                      const titleName = item.variants[0]?.name || item.mainSku;
+                      return (
+                        <div
+                          key={item.mainSku}
+                          onClick={() => setSelectedGiftGroupSku(item.mainSku)}
+                          className={`cursor-pointer p-2.5 rounded-xl border flex gap-3 items-center transition duration-150 ${
+                            isSelected 
+                              ? 'bg-indigo-50/40 border-indigo-600 ring-1 ring-indigo-500' 
+                              : 'bg-white border-slate-200 hover:border-indigo-400 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="w-11 h-11 rounded-lg border border-slate-150 overflow-hidden shrink-0 flex items-center justify-center bg-white shadow-3xs">
+                            <img 
+                              src={item.img || "https://images.unsplash.com/photo-1544233726-9f1d2b27be8b?w=60"} 
+                              alt={item.mainSku}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=60";
+                              }}
+                            />
+                          </div>
+                          
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="text-[8px] font-black text-indigo-700 font-mono tracking-wider bg-indigo-50 px-1.5 py-0.5 rounded block uppercase leading-none">
+                                {item.mainSku}
+                              </span>
+                              <span className="text-[9px] bg-slate-100 text-slate-550 rounded px-1.5 py-0.2 font-sans font-extrabold leading-none">
+                                {item.variants.length} mã
+                              </span>
+                            </div>
+                            <h5 className="font-extrabold text-slate-800 text-[11px] mt-1 truncate leading-snug">
+                              {titleName}
+                            </h5>
+                            <span className="text-[9px] text-slate-450 font-mono font-bold block mt-0.5">
+                              Cost: {minCogs === maxCogs ? formatVND(minCogs) : `${formatVND(minCogs)} - ${formatVND(maxCogs)}`}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
-              {filteredGroupedGifts.length === 0 ? (
-                <div className="col-span-full py-12 text-center text-slate-400">
-                  <span className="block text-sm font-sans font-semibold">Không tìm thấy vật phẩm quà tặng phù hợp</span>
-                  <span className="text-xs mt-1 block">Thử tìm kiếm với từ khóa khác</span>
-                </div>
-              ) : (
-                filteredGroupedGifts.map((item, groupIdx) => {
-                  // Resolve budget threshold and cost ranges
-                  const minCogs = Math.min(...item.variants.map(v => v.cogs));
-                  const maxCogs = Math.max(...item.variants.map(v => v.cogs));
-
-                  return (
-                    <div 
-                      key={groupIdx}
-                      className="bg-white border border-slate-200/70 rounded-2xl p-4.5 flex flex-col justify-between shadow-3xs hover:shadow-xs transition duration-200"
-                    >
-                      {/* Brand Group Card Header */}
-                      <div className="flex gap-3 items-start border-b border-slate-100 pb-3">
-                        <div className="w-16 h-16 rounded-xl bg-slate-50 border border-slate-150 overflow-hidden shrink-0 flex items-center justify-center self-center shadow-3xs bg-white">
+              {/* Right Pane: Variants List for the Selected Group */}
+              <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-slate-50/30">
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col min-h-0 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-slate-50 [&::-webkit-scrollbar-thumb]:bg-slate-200 hover:[&::-webkit-scrollbar-thumb]:bg-slate-350 [&::-webkit-scrollbar-thumb]:rounded-full bg-slate-50/50">
+                {currentGroup ? (
+                  <div className="space-y-4">
+                    {/* Selected Group Header Summary */}
+                    <div className="bg-white border border-slate-200/60 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-3xs">
+                      <div className="flex gap-3 items-center">
+                        <div className="w-14 h-14 rounded-xl border border-slate-150 overflow-hidden bg-white shrink-0 flex items-center justify-center">
                           <img 
-                            src={item.img || "https://images.unsplash.com/photo-1544233726-9f1d2b27be8b?w=200"} 
-                            alt={item.mainSku}
+                            src={currentGroup.img} 
+                            alt={currentGroup.mainSku}
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover"
                             onError={(e) => {
-                              (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=200";
+                              (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=100";
                             }}
                           />
                         </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap gap-1.5 items-center">
-                            <span className="bg-slate-100 border border-slate-200/50 text-slate-500 font-sans text-[9px] font-bold px-1.5 py-0.5 rounded-full block">
-                              {item.category || 'Quà tặng'}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wide">
+                              {currentGroup.category || 'Quà tặng'}
                             </span>
-                            <span className="bg-indigo-50 border border-indigo-100 text-indigo-600 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded block uppercase">
-                              {item.mainSku}
+                            <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded">
+                              SKU Gốc: {currentGroup.mainSku}
                             </span>
                           </div>
-                          <h5 className="font-bold text-slate-950 text-sm mt-1.5 truncate leading-tight" title={item.variants[0]?.name || item.mainSku}>
-                            {item.variants[0]?.name || item.mainSku}
-                          </h5>
-                          <span className="text-[10px] text-slate-400 font-sans font-medium block mt-1">
-                            Có ({item.variants.length}) phân loại từ hãng
-                          </span>
+                          <h4 className="font-extrabold text-slate-900 text-sm mt-1">
+                            {currentGroup.variants[0]?.name || currentGroup.mainSku}
+                          </h4>
+                          <p className="text-[10px] text-slate-400 mt-0.5 font-sans font-medium">
+                            Tăng giảm số lượng hoặc bật/tắt từng phân loại quà cụ thể bên dưới theo định mức quỹ an toàn.
+                          </p>
                         </div>
                       </div>
+                    </div>
 
-                      {/* Cost Range Indicator */}
-                      <div className="my-2.5 bg-slate-50 border border-slate-100 rounded-xl p-2 flex justify-between items-center text-[10px] font-semibold">
-                        <span className="text-slate-500 font-sans">Biên Cost vốn:</span>
-                        <span className="font-mono text-slate-700">
-                          {minCogs === maxCogs ? formatVND(minCogs) : `${formatVND(minCogs)} - ${formatVND(maxCogs)}`}
+                    <div className="text-[10px] uppercase font-black tracking-wide text-slate-505 pl-1 flex justify-between items-center">
+                      <span>Cơ cấu các phân loại của sản phẩm ({currentGroup.variants.length})</span>
+                      {stockRecords && (
+                        <span className="text-[9px] text-teal-700 bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded font-bold">
+                          Đã liên kết tồn kho miền bắc/nam
                         </span>
-                      </div>
+                      )}
+                    </div>
 
-                      {/* Sub-classification selection tiles */}
-                      <div className="space-y-1.5 max-h-[185px] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-slate-50 [&::-webkit-scrollbar-thumb]:bg-slate-250 hover:[&::-webkit-scrollbar-thumb]:bg-slate-350 [&::-webkit-scrollbar-thumb]:rounded-full">
-                        {item.variants.map((variant, vIdx) => {
-                          const budgetLimit = calculateValue(feeConfigs.giftQuota, activeLineMetrics.basePrice);
-                          const isUnderQuota = variant.cogs <= budgetLimit;
-                          const gapAmt = variant.cogs - budgetLimit;
+                    {/* Highly polished, responsive vertical list of variants */}
+                    <div className="space-y-3">
+                      {currentGroup.variants.map((variant, vIdx) => {
+                        const budgetLimit = calculateValue(feeConfigs.giftQuota, activeLineMetrics.basePrice);
+                        const isUnderQuota = variant.cogs <= budgetLimit;
+                        const gapAmt = variant.cogs - budgetLimit;
+                        
+                        // Active selected qty in current line
+                        const activeQty = activeLine.selectedGifts?.find(g => g.product.skuPhanLoai === variant.skuPhanLoai)?.quantity || 0;
 
-                          // Support getting active quantity
-                          const activeQty = activeLine.selectedGifts?.find(g => g.product.skuPhanLoai === variant.skuPhanLoai)?.quantity || 0;
-
-                          return (
-                            <div
-                              key={vIdx}
-                              className={`w-full p-2.5 border rounded-xl flex items-center justify-between transition-all group/vitem ${
-                                activeQty > 0 
-                                  ? 'bg-indigo-50/25 border-indigo-400'
-                                  : isUnderQuota 
-                                    ? 'bg-slate-50/50 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/35' 
-                                    : 'bg-rose-50/15 border-rose-100 hover:border-rose-400 hover:bg-rose-50/25'
-                              }`}
-                            >
-                              <div className="min-w-0 pr-2 flex-grow">
-                                <span className="text-[12px] font-bold text-slate-800 block truncate leading-tight group-hover/vitem:text-indigo-900" title={variant.name}>
+                        return (
+                          <div
+                            key={vIdx}
+                            className={`bg-white border rounded-2xl p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 transition-all duration-200 shadow-3xs ${
+                              activeQty > 0 
+                                ? 'border-indigo-500 ring-2 ring-indigo-50/70 bg-indigo-50/5'
+                                : 'border-slate-200/80 hover:border-indigo-400/80 hover:shadow-2xs'
+                            }`}
+                          >
+                            {/* Variant Info */}
+                            <div className="flex-1 min-w-0 space-y-1.5">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-extrabold text-slate-900 text-sm leading-tight block">
                                   {variant.name}
                                 </span>
-                                <div className="flex flex-wrap gap-1.5 items-center mt-1">
-                                  <span className="text-[8px] font-mono text-slate-400 block uppercase tracking-wide opacity-80 leading-none">
-                                    SKU: {variant.skuPhanLoai}
+                                {isUnderQuota ? (
+                                  <span className="text-[8px] font-black font-sans uppercase leading-none bg-emerald-50 text-emerald-700 border border-emerald-150 px-1.5 py-0.5 rounded shrink-0">
+                                    Đạt định mức
                                   </span>
-                                  {(variant.size || variant.color) && (
-                                    <span className="text-[9px] font-sans font-bold text-indigo-700 bg-indigo-50/70 px-1 py-0.5 rounded shrink-0">
+                                ) : (
+                                  <span className="text-[8px] font-black font-sans uppercase leading-none bg-rose-50 text-rose-700 border border-rose-150 px-1.5 py-0.5 rounded shrink-0" title={`Vượt định mức ${formatVND(gapAmt)}`}>
+                                    Vượt mốc +{formatVND(gapAmt)}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 font-medium">
+                                <span className="font-mono text-slate-400">SKU: <strong className="text-slate-700 font-bold tracking-wider">{variant.skuPhanLoai}</strong></span>
+                                {(variant.size || variant.color) && (
+                                  <>
+                                    <span className="text-slate-355 text-[6px]">•</span>
+                                    <span className="text-indigo-800 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.2 font-sans font-extrabold text-[9px]">
                                       {[variant.size, variant.color].filter(Boolean).join(' - ')}
                                     </span>
-                                  )}
-                                </div>
-                                <span className="text-[9px] line-through text-slate-400 block font-mono mt-1 leading-none" title="Không bao gồm giá niêm yết RSP thực tế">
-                                  RSP: {formatVND(variant.rsp)} (0đ, không tính)
+                                  </>
+                                )}
+                              </div>
+
+                              <div className="text-[10px] text-slate-400 flex flex-wrap items-center gap-2 font-medium">
+                                <span>RSP Hãng: <span className="line-through">{formatVND(variant.rsp)}</span> (0đ, không tính)</span>
+                              </div>
+                            </div>
+
+                            {/* Stock status side-by-side */}
+                            {stockRecords && (
+                              (() => {
+                                const matching = stockRecords.filter(s => s.skuPhanLoai === variant.skuPhanLoai);
+                                const total = matching.reduce((sum, s) => sum + s.quantity, 0);
+                                const south = matching.find(s => s.warehouse === 'BMVN_HCM_BTN')?.quantity || 0;
+                                const north = matching.find(s => s.warehouse === 'BMVN_BN_VSIP')?.quantity || 0;
+                                return (
+                                  <div className="shrink-0 bg-slate-50 rounded-xl px-3 py-1.5 border border-slate-150/50 flex flex-col justify-center min-w-[135px] text-center">
+                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-wide">Tồn kho thực tế</span>
+                                    {total > 0 ? (
+                                      <div className="mt-1">
+                                        <div className="text-[12px] font-black text-teal-850 leading-none">
+                                          Tổng: {total} chiếc
+                                        </div>
+                                        <div className="text-[8px] text-slate-400 font-mono mt-1 font-bold flex justify-between gap-1 border-t border-slate-200/50 pt-1">
+                                          <span>Bắc: {north}</span>
+                                          <span>•</span>
+                                          <span>Nam: {south}</span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span className="text-[10px] font-black text-rose-625 mt-0.5 leading-none">Hết hàng (0)</span>
+                                    )}
+                                  </div>
+                                );
+                              })()
+                            )}
+
+                            {/* Cost Price & Controls */}
+                            <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 pt-2.5 sm:pt-0 border-slate-100 shrink-0 min-w-[175px]">
+                              <div className="text-left sm:text-right">
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">Cost Vốn COGS</span>
+                                <span className={`text-xs font-black font-mono block leading-none mt-1 ${isUnderQuota ? 'text-slate-800' : 'text-rose-600'}`}>
+                                  {formatVND(variant.cogs)}
                                 </span>
                               </div>
 
-                              <div className="flex items-center gap-2 shrink-0">
-                                <div className="text-right">
-                                  <div className="flex items-center gap-1.5 justify-end">
-                                    <span className="text-[11px] font-black text-rose-625 font-mono">{formatVND(variant.cogs)}</span>
-                                    <span className={`text-[8px] font-black font-sans uppercase shrink-0 px-1 py-0.5 rounded leading-none ${
-                                      isUnderQuota 
-                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100/50' 
-                                        : 'bg-rose-100 text-rose-800 border border-rose-150'
-                                    }`}>
-                                      {isUnderQuota ? 'phù hợp' : 'vượt mốc'}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Active quantitative choices */}
-                                {activeQty > 0 ? (
-                                  <div className="flex items-center gap-1 bg-indigo-100/50 rounded-lg p-0.5 border border-indigo-200">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleToggleOrUpdateGift(variant, -1)}
-                                      className="cursor-pointer w-5 h-5 rounded flex items-center justify-center text-xs font-black bg-white shadow-3xs border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                                    >
-                                      -
-                                    </button>
-                                    <span className="w-4 text-center font-mono font-extrabold text-[11px] text-indigo-900">
-                                      {activeQty}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleToggleOrUpdateGift(variant, 1)}
-                                      className="cursor-pointer w-5 h-5 rounded flex items-center justify-center text-xs font-black bg-white shadow-3xs border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                                    >
-                                      +
-                                    </button>
-                                  </div>
-                                ) : (
+                              {/* Simple Quantity Toggles with smooth animation background */}
+                              {activeQty > 0 ? (
+                                <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-xl p-1 shadow-3xs">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleOrUpdateGift(variant, -1)}
+                                    className="cursor-pointer w-6 h-6 rounded-lg flex items-center justify-center text-xs font-black bg-white shadow-3xs border border-indigo-200 text-indigo-755 hover:bg-indigo-50 transition active:scale-95"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="w-4.5 text-center font-mono font-extrabold text-[12px] text-indigo-950 selection:bg-transparent">
+                                    {activeQty}
+                                  </span>
                                   <button
                                     type="button"
                                     onClick={() => handleToggleOrUpdateGift(variant, 1)}
-                                    className="cursor-pointer text-[10px] bg-indigo-650 hover:bg-indigo-700 text-white font-black py-1 px-3 rounded-lg shadow-2xs hover:scale-102 transition text-center"
+                                    className="cursor-pointer w-6 h-6 rounded-lg flex items-center justify-center text-xs font-black bg-white shadow-3xs border border-indigo-200 text-indigo-755 hover:bg-indigo-50 transition active:scale-95"
                                   >
-                                    Chọn
+                                    +
                                   </button>
-                                )}
-                              </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleOrUpdateGift(variant, 1)}
+                                  className={`cursor-pointer px-4 py-1.5 rounded-xl border font-sans font-bold text-xs transition duration-150 active:scale-95 flex items-center gap-1.5 ${
+                                    isUnderQuota
+                                      ? 'bg-indigo-600 hover:bg-indigo-750 text-white border-transparent shadow-3xs hover:shadow-2xs'
+                                      : 'bg-white hover:bg-rose-50/20 text-rose-625 border-rose-200 hover:border-rose-450'
+                                  }`}
+                                >
+                                  <Gift size={13} /> {isUnderQuota ? 'Chọn quà' : 'Vẫn chọn'}
+                                </button>
+                              )}
                             </div>
-                          );
-                        })}
-                      </div>
-
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })
-              )}
-
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center py-16 text-slate-400">
+                    <Gift size={36} className="text-slate-300 animate-pulse" />
+                    <span className="block text-xs font-sans font-bold mt-2">Vui lòng chọn một nhóm quà ở thanh danh mục phía trên</span>
+                    <span className="text-[10px] mt-1 block">Tất cả thông tin chi tiết và phân loại của nhóm quà sẽ hiển thị tại đây</span>
+                  </div>
+                )}
+              </div>
+              
             </div>
 
-            {/* Sticky bottom modal action and summary footer */}
+          </div>
+
+          {/* Sticky bottom modal action and summary footer */}
             <div className="px-6 py-4.5 bg-slate-100 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-slate-600 font-semibold">
                 <div className="flex items-center gap-1.5">
@@ -3064,7 +3280,8 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
             </div>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
