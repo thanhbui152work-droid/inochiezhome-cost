@@ -47,3 +47,10 @@ export interface QuizQuestion {
   options: number[];
   questionText: string;
 }
+
+export interface StockRecord {
+  skuPhanLoai: string;
+  warehouse: string;
+  quantity: number;
+}
+
