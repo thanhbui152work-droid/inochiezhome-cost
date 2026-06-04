@@ -5,7 +5,7 @@ import {
   Clipboard, Table, FileSpreadsheet, AlertCircle, CheckCircle, 
   Settings, HelpCircle, Info, TrendingUp, Coins, ArrowRight, 
   CornerDownRight, Sparkles, RotateCcw, Download, Eye, Layers, ChevronRight,
-  Plus, Gift
+  Plus, Gift, RefreshCw
 } from 'lucide-react';
 
 interface SheetImporterProps {
@@ -78,6 +78,51 @@ interface GroupedMainItem {
 export default function SheetImporter({ mainProducts, cogsProducts, stockRecords }: SheetImporterProps) {
   // Pasted raw spreadsheet data state
   const [pastedText, setPastedText] = useState<string>('');
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+  // Auto-sync from clipboard on focus if permission already granted
+  React.useEffect(() => {
+    const handleWindowFocus = async () => {
+      try {
+        if (navigator.permissions && navigator.permissions.query) {
+          const result = await navigator.permissions.query({ name: "clipboard-read" as any });
+          if (result.state === "granted") {
+            const text = await navigator.clipboard.readText();
+            if (text && text.trim() && text.includes("\t") && text.trim() !== pastedText.trim()) {
+              setPastedText(text);
+              setSyncStatus("Tự động đồng bộ khối bảng vừa sao chép từ Google Sheet!");
+              setTimeout(() => setSyncStatus(null), 3500);
+            }
+          }
+        }
+      } catch (e) {
+        // Fail silently if browser restricts background query
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [pastedText]);
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) {
+        setPastedText(text);
+        setSyncStatus("Đồng bộ dữ liệu bảng tính thành công!");
+        setTimeout(() => setSyncStatus(null), 3500);
+      } else {
+        setSyncStatus("Không tìm thấy dữ liệu dạng text trong bộ nhớ tạm.");
+        setTimeout(() => setSyncStatus(null), 3000);
+      }
+    } catch (err) {
+      console.warn("Clipboard read failed:", err);
+      setSyncStatus("Hãy bấm phím Ctrl+V để dán trực tiếp, hoặc cho phép đọc bộ nhớ tạm!");
+      setTimeout(() => setSyncStatus(null), 4500);
+    }
+  };
   const [customVariants, setCustomVariants] = useState<Record<string, CustomVariant[]>>({});
   const [editingVariant, setEditingVariant] = useState<{ itemId: string; variantId: string } | null>(null);
   const [giftSearchTerm, setGiftSearchTerm] = useState<string>('');
@@ -455,19 +500,30 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
       if (isMain) {
         // Create new Main Group
         // First look up in cogsProducts by SKU PHÂN LOẠI (since the user stated VP CODE corresponds to SKU PHÂN LOẠI in sheet COGS)
-        const cogsMatch = cogsProducts.find(c => 
-          (vpCode && c.skuPhanLoai === vpCode) ||
-          (barcode && c.barcode === barcode)
-        );
+        // Corrective action: Phased lookup prioritizing unique VP Code over generic Barcode matches
+        let cogsMatch = undefined;
+        if (vpCode) {
+          cogsMatch = cogsProducts.find(c => c.skuPhanLoai === vpCode);
+        }
+        if (!cogsMatch && barcode) {
+          cogsMatch = cogsProducts.find(c => c.barcode === barcode);
+        }
 
         // Then look up in mainProducts by matching vpCode directly, or via barcode, or name
         // Or if cogsMatch has mainSku, we can match main sku
-        const match = mainProducts.find(p => 
-          (vpCode && p.vpCode === vpCode) || 
-          (cogsMatch && p.vpCode === cogsMatch.mainSku) ||
-          (barcode && p.barcode === barcode) || 
-          (name && p.name.toLowerCase() === name.toLowerCase())
-        );
+        let match = undefined;
+        if (vpCode) {
+          match = mainProducts.find(p => p.vpCode === vpCode);
+        }
+        if (!match && cogsMatch && cogsMatch.mainSku) {
+          match = mainProducts.find(p => p.vpCode === cogsMatch.mainSku);
+        }
+        if (!match && barcode) {
+          match = mainProducts.find(p => p.barcode === barcode);
+        }
+        if (!match && name) {
+          match = mainProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
+        }
 
         // Determine COGS: prefer match.cogsUpdated, then cogsMatch.cogs, then fallback
         let resolvedCogs = 0;
@@ -504,19 +560,39 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
         }
 
         // Match gift in COGS catalog to get business COGS
-        // We look up by skuPhanLoai first since VP CODE corresponds to the SKU PHÂN LOẠI column in the COGS sheet.
-        const giftMatch = cogsProducts.find(g => 
-          (vpCode && g.skuPhanLoai === vpCode) || 
-          (barcode && g.barcode === barcode) || 
-          (vpCode && g.mainSku === vpCode) || 
-          (name && g.name.toLowerCase() === name.toLowerCase())
-        ) || (mainProducts.find(p => 
-          (vpCode && p.vpCode === vpCode) || 
-          (barcode && p.barcode === barcode) || 
-          (name && p.name.toLowerCase() === name.toLowerCase())
-        ) as any);
+        // Corrective action: Phased lookup prioritizing unique SKU/VP Code over generic barcode
+        let giftMatch = undefined;
 
-        const resolvedGiftCogs = giftMatch ? giftMatch.cogs : 0;
+        // Step 1: Search in cogsProducts list
+        if (vpCode) {
+          giftMatch = cogsProducts.find(g => g.skuPhanLoai === vpCode);
+          if (!giftMatch) {
+            giftMatch = cogsProducts.find(g => g.mainSku === vpCode);
+          }
+        }
+        if (!giftMatch && name) {
+          giftMatch = cogsProducts.find(g => g.name.toLowerCase() === name.toLowerCase());
+        }
+        if (!giftMatch && barcode) {
+          giftMatch = cogsProducts.find(g => g.barcode === barcode);
+        }
+
+        // Step 2: Fallback search in mainProducts list
+        if (!giftMatch) {
+          if (vpCode) {
+            giftMatch = mainProducts.find(p => p.vpCode === vpCode) as any;
+          }
+          if (!giftMatch && name) {
+            giftMatch = mainProducts.find(p => p.name.toLowerCase() === name.toLowerCase()) as any;
+          }
+          if (!giftMatch && barcode) {
+            giftMatch = mainProducts.find(p => p.barcode === barcode) as any;
+          }
+        }
+
+        const resolvedGiftCogs = giftMatch 
+          ? (giftMatch.cogs !== undefined ? giftMatch.cogs : (giftMatch.cogsUpdated || 0)) 
+          : 0;
 
         if (!giftMatch && name) {
           warnings.push(`Quà tặng "${name}" (${vpCode || barcode}) không nằm trong danh mục COGS/SKU Phân Loại được phê duyệt. Tạm tính phí vốn quà tặng = 0đ.`);
@@ -797,13 +873,34 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
         
         {/* Paste Box Area */}
         <div className="col-span-1 lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-5 shadow-3xs flex flex-col space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
               <Clipboard size={14} className="text-indigo-600 animate-pulse" />
               Khung Dán Dữ Liệu (Ctrl+v)
             </label>
-            <span className="text-[10px] text-slate-400 font-medium">Hỗ trợ đầy đủ bộ cột quy chuẩn</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePasteFromClipboard}
+                className="cursor-pointer text-[10.5px] bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded-full border border-slate-250 flex items-center gap-1.5 shadow-3xs transition hover:scale-102"
+                title="Tự động đọc bảng tính bạn vừa Copy từ Google Sheets và dán vào đây"
+              >
+                <RefreshCw size={11} className="text-indigo-600" />
+                Đồng bộ Clipboard
+              </button>
+              <span className="text-[10px] text-slate-450 font-medium hidden sm:inline">Tự động nhận diện dán</span>
+            </div>
           </div>
+
+          {syncStatus && (
+            <div className={`text-[11px] px-3 py-2 rounded-xl font-bold flex items-center gap-2 transition-all ${
+              syncStatus.includes("phím Ctrl+V") || syncStatus.includes("trống")
+                ? "bg-amber-50 text-amber-700 border border-amber-250"
+                : "bg-emerald-50 text-emerald-800 border border-emerald-250"
+            }`}>
+              <span className="text-xs">🔄</span>
+              <span>{syncStatus}</span>
+            </div>
+          )}
 
           <textarea
             value={pastedText}

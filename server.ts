@@ -4,7 +4,7 @@ import xlsx from "xlsx";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = express();
 const PORT = 3000;
