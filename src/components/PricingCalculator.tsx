@@ -3017,14 +3017,20 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                         return acc + matching.reduce((sum, s) => sum + s.quantity, 0);
                       }, 0);
 
+                      const isGroupOutOfStock = stockRecords && groupStockTotal === 0;
+
                       return (
                         <div
                           key={item.mainSku}
                           onClick={() => setSelectedGiftGroupSku(item.mainSku)}
                           className={`cursor-pointer p-2.5 rounded-xl border flex gap-3 items-center transition duration-150 ${
-                            isSelected 
-                              ? 'bg-indigo-50/40 border-indigo-600 ring-1 ring-indigo-500' 
-                              : 'bg-white border-slate-200 hover:border-indigo-400 hover:bg-slate-50'
+                            isGroupOutOfStock
+                              ? isSelected
+                                ? 'bg-rose-50/35 border-rose-500 ring-1 ring-rose-450'
+                                : 'bg-rose-50/15 border-rose-250 hover:border-rose-400 hover:bg-rose-50/25'
+                              : isSelected 
+                                ? 'bg-indigo-50/40 border-indigo-600 ring-1 ring-indigo-500' 
+                                : 'bg-white border-slate-200 hover:border-indigo-400 hover:bg-slate-50'
                           }`}
                         >
                           <div 
@@ -3052,9 +3058,16 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                               <span className="text-[8px] font-black text-indigo-700 font-mono tracking-wider bg-indigo-50 px-1.5 py-0.5 rounded block uppercase leading-none">
                                 {item.mainSku}
                               </span>
-                              <span className="text-[9px] bg-slate-100 text-slate-550 rounded px-1.5 py-0.2 font-sans font-extrabold leading-none">
-                                {item.variants.length} mã
-                              </span>
+                              <div className="flex items-center gap-1">
+                                {isGroupOutOfStock && (
+                                  <span className="text-[7.5px] font-black font-sans uppercase leading-none bg-rose-600 text-white px-1 py-0.5 rounded shrink-0">
+                                    tồn = 0
+                                  </span>
+                                )}
+                                <span className="text-[9px] bg-slate-100 text-slate-550 rounded px-1.5 py-0.2 font-sans font-extrabold leading-none">
+                                  {item.variants.length} mã
+                                </span>
+                              </div>
                             </div>
                             <h5 className="font-extrabold text-slate-800 text-[11px] mt-1 truncate leading-snug text-left">
                               {titleName}
@@ -3139,13 +3152,20 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                         // Active selected qty in current line
                         const activeQty = activeLine.selectedGifts?.find(g => g.product.skuPhanLoai === variant.skuPhanLoai)?.quantity || 0;
 
+                        // Calculate detailed inventory
+                        const matching = stockRecords ? stockRecords.filter(s => s.skuPhanLoai === variant.skuPhanLoai) : [];
+                        const totalStock = matching.reduce((sum, s) => sum + s.quantity, 0);
+                        const isOutOfStock = stockRecords && totalStock === 0;
+
                         return (
                           <div
                             key={vIdx}
                             className={`bg-white border rounded-2xl p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 transition-all duration-200 shadow-3xs ${
-                              activeQty > 0 
-                                ? 'border-indigo-500 ring-2 ring-indigo-50/70 bg-indigo-50/5'
-                                : 'border-slate-200/80 hover:border-indigo-400/80 hover:shadow-2xs'
+                              isOutOfStock
+                                ? 'border-rose-450 ring-2 ring-rose-100/70 bg-rose-50/5'
+                                : activeQty > 0 
+                                  ? 'border-indigo-500 ring-2 ring-indigo-50/70 bg-indigo-50/5'
+                                  : 'border-slate-200/80 hover:border-indigo-400/80 hover:shadow-2xs'
                             }`}
                           >
                             {/* Variant Info */}
@@ -3154,6 +3174,11 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                                 <span className="font-extrabold text-slate-900 text-sm leading-tight block">
                                   {variant.name}
                                 </span>
+                                {isOutOfStock && (
+                                  <span className="text-[8px] font-black font-sans uppercase leading-none bg-rose-600 text-white border border-rose-750 px-1.5 py-0.5 rounded shrink-0 animate-pulse">
+                                    tồn = 0
+                                  </span>
+                                )}
                                 {isUnderQuota ? (
                                   <span className="text-[8px] font-black font-sans uppercase leading-none bg-emerald-50 text-emerald-700 border border-emerald-150 px-1.5 py-0.5 rounded shrink-0">
                                     Đạt định mức

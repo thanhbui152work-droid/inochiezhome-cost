@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { MainProduct, CogsProduct } from '../types';
+import { MainProduct, CogsProduct, StockRecord } from '../types';
 import { 
   Search, SlidersHorizontal, Table, Grid, Info, ArrowUpRight, 
   ArrowDownRight, Check, CheckCircle2, HelpingHand, Gift, ExternalLink,
@@ -12,9 +12,10 @@ interface DashboardProps {
   isLoading: boolean;
   onRefresh: () => void;
   source: string;
+  stockRecords?: StockRecord[];
 }
 
-export default function Dashboard({ mainProducts, cogsProducts, isLoading, onRefresh, source }: DashboardProps) {
+export default function Dashboard({ mainProducts, cogsProducts, isLoading, onRefresh, source, stockRecords }: DashboardProps) {
   const [activeTab, setActiveTab] = useState<'main' | 'gifts'>('main');
   const [activeMainView, setActiveMainView] = useState<'card' | 'table'>('card');
   const [selectedVariantIndex, setSelectedVariantIndex] = useState<{ [key: string]: number }>({});
@@ -698,13 +699,24 @@ export default function Dashboard({ mainProducts, cogsProducts, isLoading, onRef
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
               {groupedGifts.length > 0 ? (
                 groupedGifts.map((p, idx) => {
+                  // Calculate total stock for group
+                  const totalGroupStock = p.variants.reduce((acc, v) => {
+                    const matching = stockRecords ? stockRecords.filter(s => s.skuPhanLoai === v.skuPhanLoai) : [];
+                    return acc + matching.reduce((sum, s) => sum + s.quantity, 0);
+                  }, 0);
+                  const isGroupOutOfStock = stockRecords && stockRecords.length > 0 && totalGroupStock === 0;
+
                   return (
                     <div 
                       key={idx} 
-                      className="border border-slate-200 rounded-2xl bg-white shadow-2xs hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden flex flex-col justify-between"
+                      className={`border rounded-2xl transition-all duration-200 overflow-hidden flex flex-col justify-between ${
+                        isGroupOutOfStock
+                          ? 'border-rose-400 bg-rose-50/10 shadow-sm ring-1 ring-rose-400'
+                          : 'border-slate-200 bg-white shadow-2xs hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5'
+                      }`}
                     >
                       {/* Product Image and Category overlay badge */}
-                      <div className="relative h-44 w-full bg-slate-50 flex items-center justify-center shrink-0">
+                      <div className="relative h-44 w-full bg-slate-50 flex items-center justify-center shrink-0 border-b border-slate-100">
                         <img 
                           src={p.img} 
                           alt={p.name}
@@ -730,13 +742,21 @@ export default function Dashboard({ mainProducts, cogsProducts, isLoading, onRef
                             </span>
                           )}
                         </div>
+
+                        {/* Out of stock ribbon badge */}
+                        {isGroupOutOfStock && (
+                          <div className="absolute top-3 right-3 bg-rose-600 text-white text-[9px] uppercase font-black px-2 py-1 rounded-md shadow-xs animate-pulse tracking-widest z-10 border border-rose-700/20">
+                            HẾT STOCK
+                          </div>
+                        )}
+
                         <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-xs text-white text-[10px] px-2 py-0.5 rounded-md font-mono font-semibold">
                           Main SKU: {p.mainSku}
                         </div>
                       </div>
 
                       {/* Info & Variations */}
-                      <div className="p-4 flex-1 flex flex-col justify-between">
+                      <div className="p-4 flex-1 flex flex-col justify-between bg-white">
                         <div>
                           <h4 className="font-bold text-slate-900 text-sm mt-1 line-clamp-2 leading-snug">
                             {p.name}
@@ -747,20 +767,44 @@ export default function Dashboard({ mainProducts, cogsProducts, isLoading, onRef
 
                           {/* Variations List */}
                           <div className="mt-3.5 space-y-2 border-t border-slate-100 pt-3 max-h-[160px] overflow-y-auto pr-1">
-                            {p.variants.map((v, vidx) => (
-                              <div key={vidx} className="flex justify-between items-center text-xs border-b border-dashed border-slate-100 pb-2 last:border-0 last:pb-0">
-                                <div>
-                                  <span className="font-bold text-slate-700 block">
-                                    {v.size || v.color ? `${v.size || ''} ${v.color || ''}`.trim() : 'Mã chuẩn'}
-                                  </span>
-                                  <span className="text-[10px] text-slate-400 font-mono block leading-tight">{v.skuPhanLoai}</span>
+                            {p.variants.map((v, vidx) => {
+                              const matching = stockRecords ? stockRecords.filter(s => s.skuPhanLoai === v.skuPhanLoai) : [];
+                              const totalStock = matching.reduce((sum, s) => sum + s.quantity, 0);
+                              const isOutOfStock = stockRecords && stockRecords.length > 0 && totalStock === 0;
+
+                              return (
+                                <div 
+                                  key={vidx} 
+                                  className={`flex justify-between items-center text-xs border-b border-dashed border-slate-100 pb-2 last:border-0 last:pb-0 transition-colors duration-150 ${
+                                    isOutOfStock 
+                                      ? 'border-rose-450 border-1 bg-rose-50/40 p-1.5 rounded-lg' 
+                                      : 'p-0.5'
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-bold text-slate-700 block text-[11px]">
+                                        {v.size || v.color ? `${v.size || ''} ${v.color || ''}`.trim() : 'Mã chuẩn'}
+                                      </span>
+                                      {isOutOfStock ? (
+                                        <span className="text-[8px] font-black font-sans uppercase bg-rose-600 text-white px-1.5 py-0.5 rounded tracking-wide font-mono shrink-0">
+                                          hết stock
+                                        </span>
+                                      ) : stockRecords && stockRecords.length > 0 ? (
+                                        <span className="text-[8px] font-extrabold font-sans uppercase bg-slate-100 border border-slate-250 text-slate-600 px-1.5 py-0.5 rounded tracking-wide font-mono shrink-0">
+                                          Tồn: {totalStock}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 font-mono block leading-tight">{v.skuPhanLoai}</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="font-extrabold text-rose-600 block">{formatVND(v.cogs)}</span>
+                                    <span className="text-[10px] text-slate-400 line-through block leading-tight">{formatVND(v.rsp)}</span>
+                                  </div>
                                 </div>
-                                <div className="text-right">
-                                  <span className="font-extrabold text-rose-600 block">{formatVND(v.cogs)}</span>
-                                  <span className="text-[10px] text-slate-400 line-through block leading-tight">{formatVND(v.rsp)}</span>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
 

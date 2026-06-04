@@ -3,7 +3,8 @@ import { MainProduct, CogsProduct, StockRecord } from '../types';
 import { 
   Clipboard, Table, FileSpreadsheet, AlertCircle, CheckCircle, 
   Settings, HelpCircle, Info, TrendingUp, Coins, ArrowRight, 
-  CornerDownRight, Sparkles, RotateCcw, Download, Eye, Layers, ChevronRight
+  CornerDownRight, Sparkles, RotateCcw, Download, Eye, Layers, ChevronRight,
+  Plus
 } from 'lucide-react';
 
 interface SheetImporterProps {
@@ -15,6 +16,18 @@ interface SheetImporterProps {
 interface FeeItem {
   type: 'percent' | 'value';
   val: number;
+}
+
+interface CustomVariant {
+  id: string;
+  label: string;
+  basePrice: number;
+  gifts: {
+    vpCode: string;
+    productName: string;
+    quantity: number;
+    giftCogs: number;
+  }[];
 }
 
 interface GroupedMainItem {
@@ -38,11 +51,35 @@ interface GroupedMainItem {
   }[];
   matchedMainProduct?: MainProduct;
   mainProductCogs: number;
+  customVariants?: (CustomVariant & {
+    metrics: {
+      basePrice: number;
+      shopVoucher: number;
+      actualGiftCogs: number;
+      platformVoucherCost: number;
+      fixedFee: number;
+      infraFee: number;
+      paymentFee: number;
+      voucherXtra: number;
+      commission: number;
+      ffmFee: number;
+      returnFee: number;
+      totalFees: number;
+      netPool: number;
+      netProfit: number;
+      percentageGM: number;
+      percentageNM: number;
+      customerBuyPrice: number;
+    };
+  })[];
 }
 
 export default function SheetImporter({ mainProducts, cogsProducts, stockRecords }: SheetImporterProps) {
   // Pasted raw spreadsheet data state
   const [pastedText, setPastedText] = useState<string>('');
+  const [customVariants, setCustomVariants] = useState<Record<string, CustomVariant[]>>({});
+  const [editingVariant, setEditingVariant] = useState<{ itemId: string; variantId: string } | null>(null);
+  const [giftSearchTerm, setGiftSearchTerm] = useState<string>('');
   
   // Custom Shopee Fee configs for this calculator workspace
   const [feeConfigs, setFeeConfigs] = useState({
@@ -65,6 +102,50 @@ export default function SheetImporter({ mainProducts, cogsProducts, stockRecords
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' })
       .format(Math.round(v))
       .replace('₫', 'đ');
+  };
+
+  // Helper to create a new comparison variant
+  const handleCreateVariant = (itemId: string) => {
+    const item = processedData.groupedItems.find(g => g.id === itemId);
+    if (!item) return;
+
+    const previousVariants = customVariants[itemId] || [];
+    const nextIndex = previousVariants.length + 1;
+    
+    const newVar: CustomVariant = {
+      id: `var-${itemId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      label: `Biến thể #${nextIndex}`,
+      basePrice: item.lowestPrice,
+      gifts: item.gifts.map(g => ({
+        vpCode: g.vpCode,
+        productName: g.productName,
+        quantity: g.quantity,
+        giftCogs: g.giftCogs
+      }))
+    };
+
+    setCustomVariants(prev => ({
+      ...prev,
+      [itemId]: [...(prev[itemId] || []), newVar]
+    }));
+
+    // Immediately trigger configuration popover/modal to allow customization
+    setEditingVariant({ itemId, variantId: newVar.id });
+  };
+
+  // Helper to delete a comparison variant
+  const handleDeleteVariant = (itemId: string, variantId: string) => {
+    setCustomVariants(prev => {
+      const list = prev[itemId] || [];
+      const updated = list.filter(v => v.id !== variantId);
+      const copy = { ...prev };
+      if (updated.length === 0) {
+        delete copy[itemId];
+      } else {
+        copy[itemId] = updated;
+      }
+      return copy;
+    });
   };
 
   // Helper to compute individual config values
@@ -318,6 +399,60 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
         ? (netProfit / netPool) * 100 
         : 0;
 
+      // Calculate custom variants stored in state for this item
+      const itemVariants = customVariants[item.id] || [];
+      const computedVariants = itemVariants.map(variant => {
+        const vBasePrice = variant.basePrice;
+        const vShopVoucher = 0;
+        const vActualGiftCogs = variant.gifts.reduce((sum, g) => sum + (g.giftCogs * g.quantity), 0);
+
+        const vPlatformBasePrice = Math.max(0, vBasePrice - vShopVoucher);
+        const vPlatformVoucherCost = calculateValue(feeConfigs.platformVoucher, vPlatformBasePrice, feeConfigs.platformVoucherCap);
+
+        const vFixedFee = calculateValue(feeConfigs.fixedFee, vBasePrice);
+        const vInfraFee = calculateValue(feeConfigs.infraFee, vBasePrice);
+        const vPaymentFee = calculateValue(feeConfigs.paymentFee, vBasePrice);
+        const vVoucherXtra = calculateValue(feeConfigs.voucherXtra, vBasePrice, feeConfigs.voucherXtraCap);
+        const vCommission = calculateValue(feeConfigs.commission, vBasePrice);
+        const vFfmFee = calculateValue(feeConfigs.ffmFee, vBasePrice);
+        const vReturnFee = calculateValue(feeConfigs.returnFee, vBasePrice);
+
+        const vTotalFees = vFixedFee + vInfraFee + vPaymentFee + vVoucherXtra + vCommission + vFfmFee + vReturnFee;
+        const vNetPool = vBasePrice - vShopVoucher - vTotalFees - vActualGiftCogs;
+        const vNetProfit = vNetPool - item.mainProductCogs;
+
+        const vPercentageGM = vBasePrice > 0 
+          ? ((vBasePrice - vShopVoucher - vActualGiftCogs - item.mainProductCogs) / vBasePrice) * 100 
+          : 0;
+
+        const vPercentageNM = vNetPool !== 0 
+          ? (vNetProfit / vNetPool) * 100 
+          : 0;
+
+        return {
+          ...variant,
+          metrics: {
+            basePrice: vBasePrice,
+            shopVoucher: vShopVoucher,
+            actualGiftCogs: vActualGiftCogs,
+            platformVoucherCost: vPlatformVoucherCost,
+            fixedFee: vFixedFee,
+            infraFee: vInfraFee,
+            paymentFee: vPaymentFee,
+            voucherXtra: vVoucherXtra,
+            commission: vCommission,
+            ffmFee: vFfmFee,
+            returnFee: vReturnFee,
+            totalFees: vTotalFees,
+            netPool: vNetPool,
+            netProfit: vNetProfit,
+            percentageGM: vPercentageGM,
+            percentageNM: vPercentageNM,
+            customerBuyPrice: vBasePrice - vShopVoucher - vPlatformVoucherCost
+          }
+        };
+      });
+
       return {
         ...item,
         metrics: {
@@ -338,7 +473,8 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
           percentageGM,
           percentageNM,
           customerBuyPrice: basePrice - shopVoucher - platformVoucherCost
-        }
+        },
+        customVariants: computedVariants
       };
     });
 
@@ -381,7 +517,7 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
       stats,
       warnings
     };
-  }, [pastedText, feeConfigs, mainProducts, cogsProducts]);
+  }, [pastedText, feeConfigs, mainProducts, cogsProducts, customVariants]);
 
   const activeGroupItem = useMemo(() => {
     if (!processedData.groupedItems || processedData.groupedItems.length === 0) return null;
@@ -699,7 +835,7 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
                   <FileSpreadsheet size={15} className="text-emerald-650" />
                   Chi Tiết Thành Phẩm & Biên Xuất Lực
                 </h3>
-                <p className="text-[10px] text-slate-400 mt-0.5 font-bold font-sans">
+                <p className="text-[10px] text-slate-404 mt-0.5 font-bold font-sans">
                   Sắp xếp tuyến tính: Sản phẩm chính đính kèm danh sách quà tặng tương ứng từ Google Sheet.
                 </p>
               </div>
@@ -739,8 +875,26 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
                         >
                           <td className="py-3 px-4">
                             <div className="flex flex-col">
-                              <span className="font-extrabold text-slate-800 tracking-tight leading-snug line-clamp-1">{item.productName}</span>
-                              <div className="flex gap-1.5 items-center mt-1 text-[9px] font-mono font-bold flex-wrap">
+                              {/* Product name & Bold visible Comparison Button */}
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="font-extrabold text-slate-800 tracking-tight leading-snug line-clamp-1 flex-1">
+                                  {item.productName}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCreateVariant(item.id);
+                                  }}
+                                  className="shrink-0 cursor-pointer bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-3xs hover:scale-105 active:scale-95 transition-all border border-amber-600/10"
+                                  title="Tạo phương án so sánh giá và quà tặng mới để tùy chỉnh"
+                                >
+                                  <Plus size={11} className="stroke-[3]" />
+                                  <span>Tạo so sánh</span>
+                                </button>
+                              </div>
+
+                              <div className="flex gap-1.5 items-center mt-1.5 text-[9px] font-mono font-bold flex-wrap">
                                 <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 px-1.5 rounded uppercase">Main</span>
                                 {item.campaignType && (
                                   <span className="bg-amber-50 border border-amber-200 text-amber-800 px-1.5 rounded uppercase">
@@ -788,7 +942,7 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
                               <div className="flex items-center gap-1.5">
                                 <CornerDownRight size={12} className="text-indigo-400 shrink-0" />
                                 <div className="min-w-0">
-                                  <p className="font-semibold text-slate-700 leading-tight line-clamp-1 flex items-center gap-1.5 flex-wrap">
+                                  <p className="font-semibold text-slate-705 leading-tight line-clamp-1 flex items-center gap-1.5 flex-wrap">
                                     <span>{gift.productName}</span>
                                     {stockRecords && (
                                       (() => {
@@ -815,15 +969,85 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
                                 </div>
                               </div>
                             </td>
-                            <td className="py-2.5 px-3 text-right text-slate-400 font-mono">-</td>
-                            <td className="py-2.5 px-3 text-right text-slate-400 font-mono">-</td>
+                            <td className="py-2.5 px-3 text-right text-slate-405 font-mono">-</td>
+                            <td className="py-2.5 px-3 text-right text-slate-405 font-mono">-</td>
                             <td className="py-2.5 px-3 text-right font-mono text-cyan-625 font-bold">
                               {formatVND(gift.giftCogs * gift.quantity)}
                               <span className="text-[8px] text-cyan-500 ml-1">vốn</span>
                             </td>
-                            <td className="py-2.5 px-3 text-right text-slate-400 font-mono">-</td>
-                            <td className="py-2.5 px-3 text-center text-slate-400 font-mono">-</td>
-                            <td className="py-2.5 px-4 text-center text-slate-400 font-mono">-</td>
+                            <td className="py-2.5 px-3 text-right text-slate-404 font-mono">-</td>
+                            <td className="py-2.5 px-3 text-center text-slate-404 font-mono">-</td>
+                            <td className="py-2.5 px-4 text-center text-slate-404 font-mono">-</td>
+                          </tr>
+                        ))}
+
+                        {/* Custom comparison variants list rows */}
+                        {item.customVariants && item.customVariants.length > 0 && item.customVariants.map((customVar) => (
+                          <tr key={customVar.id} className="bg-amber-50/15 text-[11.5px] font-medium border-l-4 border-amber-500 hover:bg-amber-50/25 transition-all animate-fade-in">
+                            <td className="py-3 px-4 pl-6">
+                              <div className="flex flex-col space-y-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="bg-amber-150 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider">
+                                    {customVar.label}
+                                  </span>
+                                  <span className="text-slate-405 font-extrabold text-[9px] uppercase tracking-wide">
+                                    (Biến so sánh)
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingVariant({ itemId: item.id, variantId: customVar.id });
+                                    }}
+                                    className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[9px] font-extrabold border border-amber-250/50 rounded cursor-pointer transition flex items-center gap-0.5"
+                                  >
+                                    Cấu hình lại
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteVariant(item.id, customVar.id);
+                                    }}
+                                    className="px-1.5 py-0.5 bg-rose-50 hover:bg-rose-100 border border-rose-205 text-rose-600 text-[9px] font-extrabold rounded cursor-pointer transition flex items-center gap-0.5"
+                                  >
+                                    Xóa
+                                  </button>
+                                </div>
+                                {/* List of alternative gifts under this comparison variant */}
+                                <div className="pl-4 flex flex-col gap-1 text-[9.5px] text-slate-600 font-semibold">
+                                  {customVar.gifts.length === 0 ? (
+                                    <span className="text-slate-400 font-normal italic">Không áp dụng quà tặng nào</span>
+                                  ) : (
+                                    <div className="space-y-0.5">
+                                      <span className="text-[8px] text-slate-400 uppercase font-black tracking-wider block">Danh quà quy hoạch:</span>
+                                      {customVar.gifts.map((g, gi) => (
+                                        <div key={gi} className="flex items-center gap-1">
+                                          <span className="text-amber-500">🎁</span>
+                                          <span className="text-slate-705">{g.productName}</span>
+                                          <span className="text-slate-450 font-mono text-[9px]">(SL: {g.quantity} - Cost: {formatVND(g.giftCogs)})</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-amber-700 font-black bg-amber-50/5">{formatVND(customVar.metrics.basePrice)}</td>
+                            <td className="py-3 px-3 text-right font-mono text-slate-400">-</td>
+                            <td className="py-3 px-3 text-right font-mono text-cyan-625 font-bold bg-amber-50/5">
+                              {customVar.metrics.actualGiftCogs > 0 ? (
+                                <>
+                                  {formatVND(customVar.metrics.actualGiftCogs)}
+                                  <span className="text-[8px] text-cyan-500 ml-1 font-bold">vốn</span>
+                                </>
+                              ) : (
+                                <span className="text-slate-350">0đ</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono font-extrabold text-teal-700 bg-emerald-50/15">{formatVND(customVar.metrics.netPool)}</td>
+                            <td className={`py-3 px-3 text-center font-bold bg-amber-55/10 ${customVar.metrics.percentageGM >= 20 ? 'text-emerald-700' : 'text-rose-600'}`}>{customVar.metrics.percentageGM.toFixed(0)}%</td>
+                            <td className={`py-3 px-4 text-center font-extrabold bg-emerald-50/35 ${customVar.metrics.percentageNM >= 10 ? 'text-emerald-750' : 'text-rose-600'}`}>{customVar.metrics.percentageNM.toFixed(0)}%</td>
                           </tr>
                         ))}
                       </React.Fragment>
@@ -1050,6 +1274,236 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
           </div>
         </div>
       )}
+
+      {/* Modern Dialog Config Variant popovers */}
+      {editingVariant && (() => {
+        const { itemId, variantId } = editingVariant;
+        const item = processedData.groupedItems.find(g => g.id === itemId);
+        const variantIndex = (customVariants[itemId] || []).findIndex(v => v.id === variantId);
+        const variant = (customVariants[itemId] || [])[variantIndex];
+        if (!variant || !item) return null;
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in text-slate-705">
+            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100 animate-slide-up flex flex-col max-h-[85vh] text-left">
+              
+              {/* Header */}
+              <div className="px-5 py-4 bg-amber-500/10 border-b border-amber-500/20 flex justify-between items-center shrink-0">
+                <div>
+                  <h3 className="text-xs font-black text-amber-900 flex items-center gap-1.5 uppercase tracking-wide">
+                    <Sparkles size={14} className="text-amber-600 shrink-0" />
+                    Cấu hình biến thể so sánh
+                  </h3>
+                  <p className="text-[10px] text-amber-800/80 font-bold font-sans mt-0.5 leading-snug truncate max-w-[280px]">
+                    Sản phẩm: {item.productName}
+                  </p>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setEditingVariant(null);
+                    setGiftSearchTerm('');
+                  }}
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer text-xs font-black p-1 bg-white/50 rounded-lg hover:bg-slate-100 transition whitespace-nowrap"
+                  title="Đóng cấu hình"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Scrollable Form Body */}
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                {/* Label of choice */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-black tracking-wider text-slate-500 block">Tên nhãn phương án so sánh</label>
+                  <input 
+                    type="text" 
+                    value={variant.label}
+                    onChange={(e) => {
+                      const newVal = e.target.value;
+                      setCustomVariants(prev => {
+                        const list = [...(prev[itemId] || [])];
+                        list[variantIndex] = { ...list[variantIndex], label: newVal };
+                        return { ...prev, [itemId]: list };
+                      });
+                    }}
+                    className="w-full bg-slate-50 hover:bg-slate-100/50 border border-slate-200 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 transition"
+                    placeholder="e.g. Điều chỉnh giá và quà"
+                  />
+                </div>
+
+                {/* Pricing Config */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-black tracking-wider text-slate-500 block">Giá bán trả thương lượng (VND)</label>
+                  <div className="relative">
+                    <input 
+                      type="number" 
+                      value={variant.basePrice}
+                      onChange={(e) => {
+                        const newVal = Number(e.target.value) || 0;
+                        setCustomVariants(prev => {
+                          const list = [...(prev[itemId] || [])];
+                          list[variantIndex] = { ...list[variantIndex], basePrice: newVal };
+                          return { ...prev, [itemId]: list };
+                        });
+                      }}
+                      className="w-full bg-slate-50 hover:bg-slate-100/50 border border-slate-200 focus:border-indigo-500 rounded-xl pl-3.5 pr-10 py-2 text-xs font-mono font-black text-slate-800 transition"
+                      placeholder="Ví dụ: 1150000"
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[9px] uppercase font-black text-slate-400 font-mono">đ</span>
+                  </div>
+                  <p className="text-[9px] text-slate-400 font-bold italic">
+                    * Giá bán hiện tại gốc trên Sheet: {formatVND(item.lowestPrice)}
+                  </p>
+                </div>
+
+                {/* Gifts Configuration */}
+                <div className="space-y-2 border-t border-slate-100 pt-3">
+                  <label className="text-[10px] uppercase font-black tracking-wider text-slate-500 block">Cấu hình quà tặng mới</label>
+                  
+                  {/* List of current gifts */}
+                  <div className="space-y-1.5">
+                    {variant.gifts.length === 0 ? (
+                      <div className="text-center py-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-slate-400 text-[10px] italic font-semibold">
+                        Không áp dụng quà nào trong phương án này
+                      </div>
+                    ) : (
+                      variant.gifts.map((g, gi) => (
+                        <div key={gi} className="flex items-center gap-1.5 bg-slate-50 border border-slate-150 p-2 rounded-xl text-xs font-semibold relative leading-snug">
+                          <span className="text-amber-500 text-xs shrink-0 select-none">🎁</span>
+                          <div className="flex-1 min-w-0 pr-12">
+                            <p className="text-slate-800 font-bold truncate text-[11px]">{g.productName}</p>
+                            <p className="text-[8.5px] text-indigo-600 font-extrabold font-mono mt-0.5 truncate">
+                              SKU: {g.vpCode} | Capital: {formatVND(g.giftCogs)}
+                            </p>
+                          </div>
+
+                          {/* Quantity Selector & Direct COGS Override */}
+                          <div className="flex items-center gap-1 select-none text-[10px] shrink-0">
+                            <span className="text-[8px] uppercase font-bold text-slate-400">SL:</span>
+                            <input 
+                              type="number"
+                              min="1"
+                              value={g.quantity}
+                              onChange={(e) => {
+                                const newQty = Math.max(1, Number(e.target.value) || 1);
+                                setCustomVariants(prev => {
+                                  const list = [...(prev[itemId] || [])];
+                                  const varGifts = [...list[variantIndex].gifts];
+                                  varGifts[gi] = { ...varGifts[gi], quantity: newQty };
+                                  list[variantIndex] = { ...list[variantIndex], gifts: varGifts };
+                                  return { ...prev, [itemId]: list };
+                                });
+                              }}
+                              className="w-10 bg-white border border-slate-250 rounded px-1 py-0.5 text-center font-bold font-mono text-[10px]"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomVariants(prev => {
+                                const list = [...(prev[itemId] || [])];
+                                const varGifts = list[variantIndex].gifts.filter((_, idx) => idx !== gi);
+                                list[variantIndex] = { ...list[variantIndex], gifts: varGifts };
+                                return { ...prev, [itemId]: list };
+                              });
+                            }}
+                            className="text-rose-500 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 p-1.5 rounded-md transition cursor-pointer text-[10px]"
+                            title="Xóa quà này"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Selector helper for custom gifts search */}
+                  <div className="space-y-1.5 pt-1.5">
+                    <span className="text-[9px] uppercase font-black text-slate-400 block tracking-wider">Tìm kiếm quà từ Danh lục giá vốn:</span>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        value={giftSearchTerm}
+                        onChange={(e) => setGiftSearchTerm(e.target.value)}
+                        className="w-full bg-slate-50 hover:bg-slate-100/50 border border-slate-200 focus:border-indigo-500 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:outline-hidden transition"
+                        placeholder="Gõ tên SKU phân loại hoặc Tên hàng..."
+                      />
+                      
+                      {/* Search Result Drops */}
+                      {giftSearchTerm.trim().length > 1 && (() => {
+                        const query = giftSearchTerm.toLowerCase();
+                        const matches = (cogsProducts || []).filter(p => 
+                          p.name.toLowerCase().includes(query) || 
+                          p.skuPhanLoai.toLowerCase().includes(query)
+                        ).slice(0, 5);
+
+                        if (matches.length === 0) return null;
+
+                        return (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-60 overflow-hidden divide-y divide-slate-50 max-h-[160px] overflow-y-auto">
+                            {matches.map((p, pi) => (
+                              <div 
+                                key={pi}
+                                onClick={() => {
+                                  // Check if already exist
+                                  const existIdx = variant.gifts.findIndex(g => g.vpCode === p.skuPhanLoai);
+                                  setCustomVariants(prev => {
+                                    const list = [...(prev[itemId] || [])];
+                                    const varGifts = [...list[variantIndex].gifts];
+                                    if (existIdx >= 0) {
+                                      varGifts[existIdx] = { ...varGifts[existIdx], quantity: varGifts[existIdx].quantity + 1 };
+                                    } else {
+                                      varGifts.push({
+                                        vpCode: p.skuPhanLoai,
+                                        productName: p.name,
+                                        quantity: 1,
+                                        giftCogs: p.cogs
+                                      });
+                                    }
+                                    list[variantIndex] = { ...list[variantIndex], gifts: varGifts };
+                                    return { ...prev, [itemId]: list };
+                                  });
+                                  setGiftSearchTerm('');
+                                }}
+                                className="px-3 py-2 text-[10.5px] font-semibold text-slate-700 hover:bg-amber-50 cursor-pointer transition flex justify-between items-center gap-1.5 text-left"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <span className="block truncate text-slate-850 font-bold">{p.name}</span>
+                                  <span className="block text-[8px] text-slate-400 font-mono">SKU: {p.skuPhanLoai}</span>
+                                </div>
+                                <span className="text-[9px] text-cyan-600 font-mono font-bold shrink-0">{formatVND(p.cogs)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* Footer Actions */}
+              <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex justify-end shrink-0">
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setEditingVariant(null);
+                    setGiftSearchTerm('');
+                  }}
+                  className="cursor-pointer text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl transition shadow-3xs uppercase tracking-wider"
+                >
+                  Xác nhận & Lưu cấu hình
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );
