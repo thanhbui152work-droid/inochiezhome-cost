@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import * as XLSX from 'xlsx';
 import { MainProduct, CogsProduct, StockRecord } from '../types';
 import { 
   Clipboard, Table, FileSpreadsheet, AlertCircle, CheckCircle, 
@@ -780,65 +781,138 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
     return processedData.groupedItems.find(g => g.id === activeItemDetails) || processedData.groupedItems[0];
   }, [processedData.groupedItems, activeItemDetails]);
 
-  // Export computed list to CSV
-  const handleExportCSV = () => {
+  // Export computed list to Excel (.xlsx) with all nested gifts and custom variants
+  const handleExportExcel = () => {
     if (processedData.groupedItems.length === 0) return;
 
     const headers = [
-      'Campaign Type', 'Barcode', 'VP Code', 'Loai', 'Ten San Pham', 'Gia Thap Nhat (Selling)', 
-      'COGS San Pham', 'Tong COGS Qua Tang', 'Phi Co Dinh Shopee', 'Phi Co Co So', 'Phi Thanh Toan (6%)', 
-      'Voucher X-tra', 'Hoa hong', 'Fulfillment', 'Return Risk', 'NET POOL (Doanh Thu Thuan)', 
-      'Loi Nhuan Thuan (Profit)', '%GM (Margin Gop)', '%NM (Margin Rong)'
+      'Campaign Type', 
+      'Barcode', 
+      'VP Code', 
+      'Loại', 
+      'Tên Sản Phẩm', 
+      'Giá Thấp Nhất (Selling)', 
+      'COGS Sản Phẩm', 
+      'Tổng COGS Quà Tặng', 
+      'Phí Cố Định Shopee', 
+      'Phí Cơ Sở FFM', 
+      'Phí Thanh Toán (6%)', 
+      'Voucher X-tra', 
+      'Hoa hồng', 
+      'Fulfillment', 
+      'Return Risk', 
+      'NET POOL (Doanh Thu Thuần)', 
+      'Lợi Nhuận Thuần (Profit)', 
+      '%GM (Margin Gộp)', 
+      '%NM (Margin Ròng)'
     ];
 
-    const rows = processedData.groupedItems.map(g => [
-      `"${g.campaignType}"`,
-      `"${g.barcode}"`,
-      `"${g.vpCode}"`,
-      'Main',
-      `"${g.productName}"`,
-      g.metrics.basePrice,
-      g.mainProductCogs,
-      g.metrics.actualGiftCogs,
-      g.metrics.fixedFee,
-      g.metrics.infraFee,
-      g.metrics.paymentFee,
-      g.metrics.voucherXtra,
-      g.metrics.commission,
-      g.metrics.ffmFee,
-      g.metrics.returnFee,
-      g.metrics.netPool,
-      g.metrics.netProfit,
-      `"${g.metrics.percentageGM.toFixed(1)}%"`,
-      `"${g.metrics.percentageNM.toFixed(1)}%"`
-    ]);
+    const dataRows: any[][] = [headers];
 
-    // Append child gifts row for trace
     processedData.groupedItems.forEach(g => {
-      g.gifts.forEach(gift => {
-        rows.push([
-          `"${g.campaignType}"`,
-          `"${gift.barcode}"`,
-          `"${gift.vpCode}"`,
+      // 1. Main Product row
+      dataRows.push([
+        g.campaignType,
+        g.barcode,
+        g.vpCode,
+        'Main',
+        g.productName,
+        g.metrics.basePrice,
+        g.mainProductCogs,
+        g.metrics.actualGiftCogs,
+        g.metrics.fixedFee,
+        g.metrics.infraFee,
+        g.metrics.paymentFee,
+        g.metrics.voucherXtra,
+        g.metrics.commission,
+        g.metrics.ffmFee,
+        g.metrics.returnFee,
+        g.metrics.netPool,
+        g.metrics.netProfit,
+        `${g.metrics.percentageGM.toFixed(1)}%`,
+        `${g.metrics.percentageNM.toFixed(1)}%`
+      ]);
+
+      // 2. Original campaign nested gifts
+      (g.gifts || []).forEach(gift => {
+        dataRows.push([
+          g.campaignType,
+          gift.barcode,
+          gift.vpCode,
           'Gift (Nested)',
-          `"--> TANG: ${gift.productName}"`,
+          `  --> TẶNG: ${gift.productName} (SL: ${gift.quantity})`,
           gift.lowestPrice,
           0,
-          gift.giftCogs,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, '""', '""'
+          gift.giftCogs * gift.quantity,
+          0, 0, 0, 0, 0, 0, 0, 0, 0,
+          "-",
+          "-"
         ]);
+      });
+
+      // 3. Custom Variants for this product
+      (g.customVariants || []).forEach(cv => {
+        dataRows.push([
+          `${g.campaignType} (Variant)`,
+          g.barcode,
+          g.vpCode,
+          'Variant',
+          `--> BIẾN THỂ: ${g.productName} (${cv.label})`,
+          cv.metrics.basePrice,
+          g.mainProductCogs,
+          cv.metrics.actualGiftCogs,
+          cv.metrics.fixedFee,
+          cv.metrics.infraFee,
+          cv.metrics.paymentFee,
+          cv.metrics.voucherXtra,
+          cv.metrics.commission,
+          cv.metrics.ffmFee,
+          cv.metrics.returnFee,
+          cv.metrics.netPool,
+          cv.metrics.netProfit,
+          `${cv.metrics.percentageGM.toFixed(1)}%`,
+          `${cv.metrics.percentageNM.toFixed(1)}%`
+        ]);
+
+        // 4. Gifts of this custom variant
+        (cv.gifts || []).forEach(vg => {
+          dataRows.push([
+            `${g.campaignType} (Variant)`,
+            "",
+            vg.vpCode,
+            'Gift (Variant)',
+            `    --> TẶNG [Biến thể]: ${vg.productName} (SL: ${vg.quantity})`,
+            0,
+            0,
+            vg.giftCogs * vg.quantity,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            "-",
+            "-"
+          ]);
+        });
       });
     });
 
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-      + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Inochi_GoogleSheet_Paste_Calculated_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Generate Excel sheet and workbook
+    const ws = XLSX.utils.aoa_to_sheet(dataRows);
+
+    // Dynamic column width sizing for cleaner look
+    const colWidths = headers.map((_, i) => {
+      let maxLen = 12;
+      dataRows.forEach(row => {
+        const cellVal = row[i];
+        if (cellVal !== undefined && cellVal !== null) {
+          const s = String(cellVal);
+          if (s.length > maxLen) maxLen = s.length;
+        }
+      });
+      return { wch: Math.min(maxLen + 2, 55) };
+    });
+    ws['!cols'] = colWidths;
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Biên Xuất Lực");
+    XLSX.writeFile(wb, `Inochi_Co_Cau_Gia_Paste_Calculated_${Date.now()}.xlsx`);
   };
 
   return (
@@ -1118,10 +1192,10 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
               </div>
 
               <button
-                onClick={handleExportCSV}
-                className="cursor-pointer text-[10px] bg-emerald-600 hover:bg-emerald-505 text-white font-extrabold px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-3xs transition"
+                onClick={handleExportExcel}
+                className="cursor-pointer text-[10px] bg-emerald-600 hover:bg-emerald-550 text-white font-extrabold px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-3xs transition"
               >
-                <Download size={12} /> Tải file CSV bảng tính
+                <FileSpreadsheet size={12} /> Tải file Excel bảng tính
               </button>
             </div>
 
