@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { MainProduct, CogsProduct, StockRecord } from '../types';
+import { MainProduct, CogsProduct, StockRecord, ShopVoucher } from '../types';
 import { 
   Calculator, Settings, Gift, HelpCircle, Info, CheckCircle, 
   PlusCircle, Trash2, ArrowRightLeft, DollarSign, Percent, AlertCircle, Sparkles, Download, Plus,
@@ -12,6 +12,7 @@ interface PricingCalculatorProps {
   tiktokProducts: MainProduct[];
   cogsProducts: CogsProduct[];
   stockRecords?: StockRecord[];
+  shopVouchers?: ShopVoucher[];
 }
 
 interface FeeItem {
@@ -38,18 +39,7 @@ interface SimulatedLine {
   selectedVoucherId?: string;
 }
 
-interface ShopVoucher {
-  id: string;
-  code: string;
-  type: 'percent' | 'value';
-  val: number;
-  minSpent: number;
-  capVal: number;
-  priority: number;
-  active: boolean;
-}
-
-export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogsProducts, stockRecords }: PricingCalculatorProps) {
+export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogsProducts, stockRecords, shopVouchers: propsShopVouchers }: PricingCalculatorProps) {
   const [activePlatform, setActivePlatform] = useState<'shopee' | 'tiktok'>('shopee');
 
   const activeProducts = useMemo(() => {
@@ -228,12 +218,23 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
   }, []);
 
   // Shop vouchers managed state (min spend condition & cap reduction & priorities order)
-  const [shopVouchers, setShopVouchers] = useState<ShopVoucher[]>([
-    { id: 'sv-1', code: 'INOCHI_MEMBER5', type: 'percent', val: 5, minSpent: 300000, capVal: 50000, priority: 1, active: true },
-    { id: 'sv-2', code: 'INOCHI_VIP10', type: 'percent', val: 10, minSpent: 600005, capVal: 100000, priority: 2, active: true },
-    { id: 'sv-3', code: 'INOCHI_MEGA150', type: 'value', val: 150000, minSpent: 1200000, capVal: 150000, priority: 3, active: true },
-    { id: 'sv-4', code: 'INOCHI_FLASH50', type: 'value', val: 50000, minSpent: 500000, capVal: 50000, priority: 4, active: true },
-  ]);
+  const [shopVouchers, setShopVouchers] = useState<ShopVoucher[]>(() => {
+    if (propsShopVouchers && propsShopVouchers.length > 0) {
+      return propsShopVouchers;
+    }
+    return [
+      { id: 'sv-1', code: 'VC 15K, MBS 199K', type: 'percent', val: 5, minSpent: 199000, capVal: 15000, priority: 1, active: true },
+      { id: 'sv-2', code: 'VC 40K, MBS 399K', type: 'percent', val: 7, minSpent: 399000, capVal: 40000, priority: 2, active: true },
+      { id: 'sv-3', code: 'VC 55K, MBS 599K', type: 'percent', val: 7, minSpent: 599000, capVal: 55000, priority: 3, active: true },
+      { id: 'sv-4', code: 'VC 100K, MBS 999K', type: 'percent', val: 7, minSpent: 999000, capVal: 100000, priority: 4, active: true },
+    ];
+  });
+
+  useEffect(() => {
+    if (propsShopVouchers && propsShopVouchers.length > 0) {
+      setShopVouchers(propsShopVouchers);
+    }
+  }, [propsShopVouchers]);
 
   const addShopVoucher = () => {
     const nextPriority = shopVouchers.length > 0 ? Math.max(...shopVouchers.map(v => v.priority)) + 1 : 1;
@@ -385,9 +386,11 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
       let appliedVoucherId = "";
 
       if (vMode === 'auto') {
-        const eligibleVouchers = shopVouchers
-          .filter(v => v.active && basePrice >= v.minSpent)
-          .sort((a, b) => b.priority - a.priority); // Highest priority first
+        const eligibleVouchers = activePlatform === 'tiktok'
+          ? []
+          : shopVouchers
+              .filter(v => v.active && basePrice >= v.minSpent)
+              .sort((a, b) => b.priority - a.priority); // Highest priority first
         
         if (eligibleVouchers.length > 0) {
           const mainVoucher = eligibleVouchers[0];
@@ -1638,10 +1641,10 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
             </div>
 
             {/* List Table of Shop Vouchers */}
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[380px] overflow-y-auto border border-slate-150 rounded-2xl">
               <table className="w-full text-left text-xs border-collapse min-w-[750px] font-sans">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-150 text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">
+                <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
+                  <tr className="border-b border-slate-150 text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">
                     <th className="py-2.5 px-3">Mã Voucher (Code)</th>
                     <th className="py-2.5 px-3">Phân loại giảm</th>
                     <th className="py-2.5 px-3">Giá trị giảm (Val)</th>

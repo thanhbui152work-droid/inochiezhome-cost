@@ -307,6 +307,74 @@ function parseTonKhoSheet(rows: any[][]) {
   return stockRecords;
 }
 
+function parseVoucherShopSheet(rows: any[][]) {
+  let idxVoucherType = 0;  // Voucher Type (A)
+  let idxVoucherScheme = 1; // Voucher Scheme (B)
+  let idxPercentDiscount = 2; // % Discount (C)
+  let idxCap = 3;  // Cap (D)
+  let idxMbs = 4;  // MBS (E)
+  let idxPlatform = 8; // Platform (I)
+
+  if (rows && rows.length > 0) {
+    const limit = Math.min(rows.length, 3);
+    for (let r = 0; r < limit; r++) {
+      const row = rows[r] || [];
+      for (let c = 0; c < row.length; c++) {
+        const cell = String(row[c] || "").trim().toUpperCase();
+        if (cell === "VOUCHER TYPE" || cell === "LOẠI VOUCHER") idxVoucherType = c;
+        if (cell === "VOUCHER SCHEME" || cell === "CHƯƠNG TRÌNH" || cell === "MA" || cell === "MÃ") idxVoucherScheme = c;
+        if (cell === "% DISCOUNT" || cell === "PHẦN TRĂM GIẢM" || cell === "CHIẾT KHẤU") idxPercentDiscount = c;
+        if (cell === "CAP" || cell === "GIỚI HẠN" || cell === "TỐI ĐA") idxCap = c;
+        if (cell === "MBS" || cell === "ĐƠN TỐI THIỂU" || cell === "GIÁ TRỊ TỐI THIỂU") idxMbs = c;
+        if (cell === "PLATFORM" || cell === "KÊNH" || cell === "SÀN") idxPlatform = c;
+      }
+    }
+  }
+
+  const vouchers = [];
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row) continue;
+
+    const voucherScheme = String(row[idxVoucherScheme] || "").trim();
+    if (!voucherScheme || voucherScheme.toUpperCase() === "VOUCHER SCHEME" || voucherScheme.toUpperCase() === "NO") continue;
+
+    const discVal = cleanNumber(row[idxPercentDiscount]);
+    const mbsVal = cleanNumber(row[idxMbs]);
+    const capVal = cleanNumber(row[idxCap]);
+    const platform = String(row[idxPlatform] || "All").trim();
+
+    const hasDiscount = discVal > 0;
+    const type = hasDiscount ? 'percent' : 'value';
+
+    let valResult = 0;
+    if (type === 'percent') {
+      if (discVal <= 1) {
+        valResult = Math.round(discVal * 100);
+      } else {
+        valResult = discVal;
+      }
+    } else {
+      valResult = capVal;
+    }
+
+    vouchers.push({
+      id: `sv-live-${r}`,
+      code: voucherScheme, // e.g. "VC 15K, MBS 199K"
+      type: type,
+      val: valResult,
+      minSpent: mbsVal,
+      capVal: capVal || valResult,
+      priority: r,
+      active: true,
+      voucherType: String(row[idxVoucherType] || "Always On").trim(),
+      platform: platform
+    });
+  }
+
+  return vouchers;
+}
+
 // Helper to parse GM DAILY sheet tab
 function parseGMDailySheet(rows: any[][]) {
   if (!rows || rows.length < 2) return null;
@@ -512,6 +580,7 @@ app.get("/api/sheets-data", async (req, res) => {
     let cogsSheetName = "";
     let tonKhoSheetName = "";
     let gmDailySheetName = "";
+    let voucherShopSheetName = "";
 
     for (const name of workbook.SheetNames) {
       const lower = name.toLowerCase().trim();
@@ -521,6 +590,8 @@ app.get("/api/sheets-data", async (req, res) => {
         mainSheetName = name;
       } else if (lower.includes("cogs")) {
         cogsSheetName = name;
+      } else if (lower.includes("voucher shop") || lower.includes("vouchershop") || lower === "voucher") {
+        voucherShopSheetName = name;
       } else if (
         lower.includes("tồn kho") || 
         lower.includes("ton kho") || 
@@ -595,6 +666,25 @@ app.get("/api/sheets-data", async (req, res) => {
       }
     }
 
+    let shopVouchers = [];
+    if (voucherShopSheetName) {
+      try {
+        const voucherShopSheetRaw = xlsx.utils.sheet_to_json<any[]>(workbook.Sheets[voucherShopSheetName], { header: 1 });
+        shopVouchers = parseVoucherShopSheet(voucherShopSheetRaw);
+        console.log(`Successfully parsed Voucher Shop sheet: count=${shopVouchers.length}`);
+      } catch (e: any) {
+        console.warn("Failed to parse Voucher Shop sheet, using fallbacks:", e.message);
+      }
+    }
+
+    // Default vouchers fallbacks
+    const fallbackShopVouchers = [
+      { id: 'sv-1', code: 'VC 15K, MBS 199K', type: 'percent', val: 5, minSpent: 199000, capVal: 15000, priority: 1, active: true, platform: 'All', voucherType: 'Always On' },
+      { id: 'sv-2', code: 'VC 40K, MBS 399K', type: 'percent', val: 7, minSpent: 399000, capVal: 40000, priority: 2, active: true, platform: 'All', voucherType: 'Always On' },
+      { id: 'sv-3', code: 'VC 55K, MBS 599K', type: 'percent', val: 7, minSpent: 599000, capVal: 55000, priority: 3, active: true, platform: 'All', voucherType: 'Always On' },
+      { id: 'sv-4', code: 'VC 100K, MBS 999K', type: 'percent', val: 7, minSpent: 999000, capVal: 100000, priority: 4, active: true, platform: 'All', voucherType: 'Always On' },
+    ];
+
     console.log(`Successfully parsed Google Sheets: mainCount=${mainProducts.length}, tiktokCount=${tiktokProducts.length}, cogsCount=${cogsProducts.length}, stockCount=${stockRecords.length}`);
     res.json({
       success: true,
@@ -604,10 +694,17 @@ app.get("/api/sheets-data", async (req, res) => {
       tiktok: tiktokProducts,
       cogs: cogsProducts,
       stock: stockRecords,
+      shopVouchers: shopVouchers.length > 0 ? shopVouchers : fallbackShopVouchers,
       gmDaily: gmDailyDataParsed || fallbackGMDailyData
     });
   } catch (error: any) {
     console.warn("Error fetching live sheet, using premium embedded fallback data:", error);
+    const fallbackShopVouchers = [
+      { id: 'sv-1', code: 'VC 15K, MBS 199K', type: 'percent', val: 5, minSpent: 199000, capVal: 15000, priority: 1, active: true, platform: 'All', voucherType: 'Always On' },
+      { id: 'sv-2', code: 'VC 40K, MBS 399K', type: 'percent', val: 7, minSpent: 399000, capVal: 40000, priority: 2, active: true, platform: 'All', voucherType: 'Always On' },
+      { id: 'sv-3', code: 'VC 55K, MBS 599K', type: 'percent', val: 7, minSpent: 599000, capVal: 55000, priority: 3, active: true, platform: 'All', voucherType: 'Always On' },
+      { id: 'sv-4', code: 'VC 100K, MBS 999K', type: 'percent', val: 7, minSpent: 999000, capVal: 100000, priority: 4, active: true, platform: 'All', voucherType: 'Always On' },
+    ];
     res.json({
       success: false,
       source: "fallback_embedded",
@@ -616,6 +713,7 @@ app.get("/api/sheets-data", async (req, res) => {
       tiktok: fallbackMainProducts,
       cogs: fallbackCogsProducts,
       stock: generateFallbackStock(),
+      shopVouchers: fallbackShopVouchers,
       gmDaily: fallbackGMDailyData,
       error: error.message,
     });

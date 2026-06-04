@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MainProduct, CogsProduct, StockRecord, GMDailyData } from './types';
+import { MainProduct, CogsProduct, StockRecord, GMDailyData, ShopVoucher } from './types';
 import Dashboard from './components/Dashboard';
 import GMDaily from './components/GMDaily';
 import AIConsultant from './components/AIConsultant';
@@ -32,6 +32,7 @@ export default function App() {
   const [tiktokProducts, setTiktokProducts] = useState<MainProduct[]>([]);
   const [cogsProducts, setCogsProducts] = useState<CogsProduct[]>([]);
   const [stockRecords, setStockRecords] = useState<StockRecord[]>([]);
+  const [shopVouchers, setShopVouchers] = useState<ShopVoucher[]>([]);
   const [gmDailyData, setGMDailyData] = useState<GMDailyData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sheetSource, setSheetSource] = useState<string>('live_google_sheet');
@@ -50,6 +51,7 @@ export default function App() {
         setTiktokProducts(data.tiktok || data.main);
         setCogsProducts(data.cogs);
         setStockRecords(data.stock || []);
+        setShopVouchers(data.shopVouchers || []);
         setGMDailyData(data.gmDaily || null);
         setSheetSource(data.source || 'live_google_sheet');
       } else {
@@ -258,6 +260,7 @@ export default function App() {
                   tiktokProducts={tiktokProducts} 
                   cogsProducts={cogsProducts} 
                   stockRecords={stockRecords}
+                  shopVouchers={shopVouchers}
                 />
               )}
 

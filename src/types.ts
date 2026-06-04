@@ -65,4 +65,17 @@ export interface GMDailyData {
   metrics: Record<string, Record<string, number[]>>;
 }
 
+export interface ShopVoucher {
+  id: string;
+  code: string;
+  type: 'percent' | 'value';
+  val: number;
+  minSpent: number;
+  capVal: number;
+  priority: number;
+  active: boolean;
+  voucherType?: string;
+  platform?: string;
+}
+
 
