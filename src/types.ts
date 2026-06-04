@@ -54,3 +54,15 @@ export interface StockRecord {
   quantity: number;
 }
 
+export interface GMDailyColumn {
+  index: number;
+  date: string;
+  day: string;
+}
+
+export interface GMDailyData {
+  columns: GMDailyColumn[];
+  metrics: Record<string, Record<string, number[]>>;
+}
+
+

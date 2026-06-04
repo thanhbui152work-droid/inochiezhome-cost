@@ -307,6 +307,168 @@ function parseTonKhoSheet(rows: any[][]) {
   return stockRecords;
 }
 
+// Helper to parse GM DAILY sheet tab
+function parseGMDailySheet(rows: any[][]) {
+  if (!rows || rows.length < 2) return null;
+
+  const headerRow1 = rows[0] || [];
+  const headerRow2 = rows[1] || [];
+
+  const columns: { index: number; date: string; day: string }[] = [];
+  
+  for (let c = 2; c < Math.max(headerRow1.length, headerRow2.length); c++) {
+    let dateVal = String(headerRow1[c] || "").trim();
+    const dayVal = String(headerRow2[c] || "").trim();
+    
+    if (/^\d+$/.test(dateVal)) {
+      const serial = parseInt(dateVal, 10);
+      const tempDate = new Date((serial - 25569) * 86400 * 1000);
+      dateVal = `${tempDate.getUTCDate()}/${tempDate.getUTCMonth() + 1}/${tempDate.getUTCFullYear()}`;
+    }
+    
+    if (dateVal || dayVal) {
+      columns.push({
+        index: c,
+        date: dateVal || (c === 2 ? "TTL" : ""),
+        day: dayVal || (c === 2 ? "TOTAL" : "")
+      });
+    }
+  }
+
+  const metrics: Record<string, Record<string, number[]>> = {
+    "GMV": {},
+    "NMV": {},
+    "COGS": {},
+    "%GM": {}
+  };
+
+  let currentMetric = "GMV";
+
+  for (let r = 2; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row) continue;
+
+    const colA_val = String(row[0] || "").trim().toUpperCase();
+    const colB_val = String(row[1] || "").trim().toUpperCase();
+    const colC_val = String(row[2] || "").trim().toUpperCase();
+
+    if (colA_val.includes("GMV") || colB_val.includes("GMV") || colC_val.includes("GMV")) {
+      currentMetric = "GMV";
+    } else if (colA_val.includes("NMV") || colB_val.includes("NMV") || colC_val.includes("NMV")) {
+      currentMetric = "NMV";
+    } else if (colA_val.includes("COGS") || colB_val.includes("COGS") || colC_val.includes("COGS")) {
+      currentMetric = "COGS";
+    } else if (colA_val.includes("%GM") || colB_val.includes("%GM") || colC_val.includes("%GM")) {
+      currentMetric = "%GM";
+    } else if (colA_val.includes("GM") || colB_val.includes("GM") || colC_val.includes("GM")) {
+      currentMetric = "%GM";
+    }
+
+    let channelLabel = "";
+    const rawLabel = String(row[1] || row[0] || "").trim();
+    const cleanLabelLower = rawLabel.toLowerCase();
+
+    if (cleanLabelLower.includes("shopee_v2") || cleanLabelLower === "shopee_v2" || cleanLabelLower === "shopee") {
+      channelLabel = "shopee_v2";
+    } else if (cleanLabelLower.includes("tiktok") || cleanLabelLower === "tiktok" || cleanLabelLower === "tiktokshop") {
+      channelLabel = "Tiktok";
+    } else if (cleanLabelLower.includes("haravan") || cleanLabelLower === "haravan") {
+      channelLabel = "Haravan";
+    } else if (cleanLabelLower === "ttl" || cleanLabelLower === "total" || cleanLabelLower.includes("tổng") || cleanLabelLower.includes("tong")) {
+      channelLabel = "Total";
+    }
+
+    if (!channelLabel) {
+      const isMetricRow = ["GMV", "NMV", "COGS", "%GM", "% GM"].includes(rawLabel.toUpperCase());
+      if (isMetricRow) {
+        channelLabel = "Total";
+      } else {
+        continue;
+      }
+    }
+
+    const valuesArray: number[] = [];
+    for (const col of columns) {
+      const cellVal = row[col.index];
+      let numVal = cleanNumber(cellVal);
+
+      if (currentMetric === "%GM" && typeof cellVal === "number" && cellVal > 0 && cellVal <= 1) {
+        numVal = cellVal * 100;
+      }
+      valuesArray.push(numVal);
+    }
+
+    if (!metrics[currentMetric]) {
+      metrics[currentMetric] = {};
+    }
+    metrics[currentMetric][channelLabel] = valuesArray;
+  }
+
+  // Ensure default channels exist to avoid rendering errors
+  const channels = ["Total", "shopee_v2", "Tiktok", "Haravan"];
+  for (const mKey of ["GMV", "NMV", "COGS", "%GM"]) {
+    if (!metrics[mKey]) metrics[mKey] = {};
+    for (const ch of channels) {
+      if (!metrics[mKey][ch]) {
+        metrics[mKey][ch] = new Array(columns.length).fill(0);
+      }
+    }
+  }
+
+  return {
+    columns,
+    metrics
+  };
+}
+
+const fallbackGMDailyData = {
+  columns: [
+    { index: 2, date: "TTL", day: "TOTAL" },
+    { index: 3, date: "1/1/2026", day: "Thu" },
+    { index: 4, date: "1/2/2026", day: "Fri" },
+    { index: 5, date: "1/3/2026", day: "Sat" },
+    { index: 6, date: "1/4/2026", day: "Sun" },
+    { index: 7, date: "1/5/2026", day: "Mon" },
+    { index: 8, date: "1/6/2026", day: "Tue" },
+    { index: 9, date: "1/7/2026", day: "Wed" },
+    { index: 10, date: "1/8/2026", day: "Thu" },
+    { index: 11, date: "1/9/2026", day: "Fri" },
+    { index: 12, date: "1/10/2026", day: "Sat" },
+    { index: 13, date: "1/11/2026", day: "Sun" },
+    { index: 14, date: "1/12/2026", day: "Mon" },
+    { index: 15, date: "1/13/2026", day: "Tue" },
+    { index: 16, date: "1/14/2026", day: "Wed" },
+    { index: 17, date: "1/15/2026", day: "Thu" },
+    { index: 18, date: "1/16/2026", day: "Fri" }
+  ],
+  metrics: {
+    "GMV": {
+      "Total": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "shopee_v2": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "Tiktok": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "Haravan": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    "NMV": {
+      "Total": [8887971522, 170024522, 0, 0, 0, 0, 0, 2853300, 1723000, 2051000, 1422000, 2260000, 771000, 1638000, 3057000, 2538000, 3205997, 3645950],
+      "shopee_v2": [6020988158, 103873470, 0, 0, 0, 0, 0, 2853300, 1723000, 2051000, 1422000, 2260000, 771000, 1638000, 3057000, 2538000, 2813997, 1260000],
+      "Tiktok": [1920569895, 48521842, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 392000, 0],
+      "Haravan": [946413469, 17629210, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2385950]
+    },
+    "COGS": {
+      "Total": [5307934798, 69517558, 0, 0, 0, 0, 0, 1222293, 823435, 879788, 784259, 1187901, 427000, 753332, 1459886, 1313366, 1741931, 1447505],
+      "shopee_v2": [3623054170, 46451607, 0, 0, 0, 0, 0, 1222293, 823435, 879788, 784259, 1187901, 427000, 753332, 1459886, 1313366, 1402661, 479635],
+      "Tiktok": [1318218501, 16690550, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 339270, 0],
+      "Haravan": [366662127, 6375401, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 967870]
+    },
+    "%GM": {
+      "Total": [40.3, 59.1, 0, 0, 0, 0, 0, 57.2, 52.2, 57.1, 44.8, 47.4, 44.6, 54.0, 52.3, 48.3, 45.7, 60.3],
+      "shopee_v2": [39.8, 55.3, 0, 0, 0, 0, 0, 57.2, 52.2, 57.1, 44.8, 47.4, 44.6, 54.0, 52.3, 48.3, 50.2, 61.9],
+      "Tiktok": [31.4, 65.6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 13.5, 0],
+      "Haravan": [61.3, 63.8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 59.4]
+    }
+  }
+};
+
 const generateFallbackStock = () => {
   const stock = [];
   for (const item of fallbackCogsProducts) {
@@ -349,6 +511,7 @@ app.get("/api/sheets-data", async (req, res) => {
     let tiktokSheetName = "";
     let cogsSheetName = "";
     let tonKhoSheetName = "";
+    let gmDailySheetName = "";
 
     for (const name of workbook.SheetNames) {
       const lower = name.toLowerCase().trim();
@@ -358,8 +521,10 @@ app.get("/api/sheets-data", async (req, res) => {
         mainSheetName = name;
       } else if (lower.includes("cogs")) {
         cogsSheetName = name;
-      } else if (lower.includes("tồn kho") || lower.includes("ton kho") || lower.includes("tonkho")) {
+      } else if (lower.includes("tốn kho") || lower.includes("ton kho") || lower.includes("tonkho")) {
         tonKhoSheetName = name;
+      } else if (lower.includes("gm daily") || lower.includes("gmdaily") || lower.includes("gm_daily")) {
+        gmDailySheetName = name;
       }
     }
 
@@ -413,6 +578,17 @@ app.get("/api/sheets-data", async (req, res) => {
       }
     }
 
+    let gmDailyDataParsed = null;
+    if (gmDailySheetName) {
+      try {
+        const gmDailySheetRaw = xlsx.utils.sheet_to_json<any[]>(workbook.Sheets[gmDailySheetName], { header: 1 });
+        gmDailyDataParsed = parseGMDailySheet(gmDailySheetRaw);
+        console.log("Successfully parsed GM Daily sheet from workbook!");
+      } catch (e: any) {
+        console.warn("Failed to parse GM Daily sheet from Google Sheet, using fallback:", e.message);
+      }
+    }
+
     console.log(`Successfully parsed Google Sheets: mainCount=${mainProducts.length}, tiktokCount=${tiktokProducts.length}, cogsCount=${cogsProducts.length}, stockCount=${stockRecords.length}`);
     res.json({
       success: true,
@@ -421,7 +597,8 @@ app.get("/api/sheets-data", async (req, res) => {
       shopee: mainProducts,
       tiktok: tiktokProducts,
       cogs: cogsProducts,
-      stock: stockRecords
+      stock: stockRecords,
+      gmDaily: gmDailyDataParsed || fallbackGMDailyData
     });
   } catch (error: any) {
     console.warn("Error fetching live sheet, using premium embedded fallback data:", error);
@@ -433,6 +610,7 @@ app.get("/api/sheets-data", async (req, res) => {
       tiktok: fallbackMainProducts,
       cogs: fallbackCogsProducts,
       stock: generateFallbackStock(),
+      gmDaily: fallbackGMDailyData,
       error: error.message,
     });
   }

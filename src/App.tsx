@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { MainProduct, CogsProduct, StockRecord } from './types';
+import { MainProduct, CogsProduct, StockRecord, GMDailyData } from './types';
 import Dashboard from './components/Dashboard';
-import StudyCenter from './components/StudyCenter';
+import GMDaily from './components/GMDaily';
 import AIConsultant from './components/AIConsultant';
 import PricingCalculator from './components/PricingCalculator';
 import SheetImporter from './components/SheetImporter';
 import { 
   LayoutDashboard, Brain, Calculator, Sparkles, 
   HelpCircle, RefreshCw, Layers, GraduationCap, Gift, ChevronRight, FileSpreadsheet,
-  ArrowUp
+  ArrowUp, TrendingUp
 } from 'lucide-react';
 
 declare global {
@@ -17,7 +17,7 @@ declare global {
   }
 }
 
-type NavTab = 'dashboard' | 'pricing' | 'study' | 'advisor' | 'sheet-importer';
+type NavTab = 'dashboard' | 'pricing' | 'gmdaily' | 'advisor' | 'sheet-importer';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
@@ -25,6 +25,7 @@ export default function App() {
   const [tiktokProducts, setTiktokProducts] = useState<MainProduct[]>([]);
   const [cogsProducts, setCogsProducts] = useState<CogsProduct[]>([]);
   const [stockRecords, setStockRecords] = useState<StockRecord[]>([]);
+  const [gmDailyData, setGMDailyData] = useState<GMDailyData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sheetSource, setSheetSource] = useState<string>('live_google_sheet');
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -41,6 +42,7 @@ export default function App() {
         setTiktokProducts(data.tiktok || data.main);
         setCogsProducts(data.cogs);
         setStockRecords(data.stock || []);
+        setGMDailyData(data.gmDaily || null);
         setSheetSource(data.source || 'live_google_sheet');
       } else {
         throw new Error("Invalid schema received");
@@ -161,15 +163,16 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => setActiveTab('study')}
+                id="tab-btn-gmdaily"
+                onClick={() => setActiveTab('gmdaily')}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold uppercase transition-all duration-150 cursor-pointer ${
-                  activeTab === 'study'
+                  activeTab === 'gmdaily'
                     ? 'bg-indigo-600 text-white shadow-xs border border-indigo-700/10'
                     : 'bg-white border border-slate-200/50 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <GraduationCap size={13} />
-                <span>Cẩm Nang & Luật Sàn</span>
+                <TrendingUp size={13} />
+                <span>GM DAILY</span>
               </button>
 
               <button
@@ -237,9 +240,10 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'study' && (
-                <StudyCenter 
-                  mainProducts={mainProducts} 
+              {activeTab === 'gmdaily' && (
+                <GMDaily 
+                  gmDailyData={gmDailyData}
+                  isLoading={isLoading}
                 />
               )}
               {activeTab === 'advisor' && (
