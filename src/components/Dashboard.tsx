@@ -701,7 +701,7 @@ export default function Dashboard({ mainProducts, cogsProducts, isLoading, onRef
                 groupedGifts.map((p, idx) => {
                   // Calculate total stock for group
                   const totalGroupStock = p.variants.reduce((acc, v) => {
-                    const matching = stockRecords ? stockRecords.filter(s => s.skuPhanLoai === v.skuPhanLoai) : [];
+                    const matching = stockRecords ? stockRecords.filter(s => (s.skuPhanLoai || "").trim().toUpperCase() === (v.skuPhanLoai || "").trim().toUpperCase()) : [];
                     return acc + matching.reduce((sum, s) => sum + s.quantity, 0);
                   }, 0);
                   const isGroupOutOfStock = stockRecords && stockRecords.length > 0 && totalGroupStock === 0;
@@ -768,7 +768,7 @@ export default function Dashboard({ mainProducts, cogsProducts, isLoading, onRef
                           {/* Variations List */}
                           <div className="mt-3.5 space-y-2 border-t border-slate-100 pt-3 max-h-[160px] overflow-y-auto pr-1">
                             {p.variants.map((v, vidx) => {
-                              const matching = stockRecords ? stockRecords.filter(s => s.skuPhanLoai === v.skuPhanLoai) : [];
+                              const matching = stockRecords ? stockRecords.filter(s => (s.skuPhanLoai || "").trim().toUpperCase() === (v.skuPhanLoai || "").trim().toUpperCase()) : [];
                               const totalStock = matching.reduce((sum, s) => sum + s.quantity, 0);
                               const isOutOfStock = stockRecords && stockRecords.length > 0 && totalStock === 0;
 

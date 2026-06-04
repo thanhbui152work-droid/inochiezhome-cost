@@ -521,7 +521,13 @@ app.get("/api/sheets-data", async (req, res) => {
         mainSheetName = name;
       } else if (lower.includes("cogs")) {
         cogsSheetName = name;
-      } else if (lower.includes("tốn kho") || lower.includes("ton kho") || lower.includes("tonkho")) {
+      } else if (
+        lower.includes("tồn kho") || 
+        lower.includes("ton kho") || 
+        lower.includes("tonkho") || 
+        lower.includes("tốn") ||
+        lower.includes("tồn")
+      ) {
         tonKhoSheetName = name;
       } else if (lower.includes("gm daily") || lower.includes("gmdaily") || lower.includes("gm_daily")) {
         gmDailySheetName = name;

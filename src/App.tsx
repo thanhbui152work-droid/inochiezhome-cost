@@ -5,6 +5,7 @@ import GMDaily from './components/GMDaily';
 import AIConsultant from './components/AIConsultant';
 import PricingCalculator from './components/PricingCalculator';
 import SheetImporter from './components/SheetImporter';
+import LockScreen from './components/LockScreen';
 import { 
   LayoutDashboard, Brain, Calculator, Sparkles, 
   HelpCircle, RefreshCw, Layers, GraduationCap, Gift, ChevronRight, FileSpreadsheet,
@@ -20,6 +21,12 @@ declare global {
 type NavTab = 'dashboard' | 'pricing' | 'gmdaily' | 'advisor' | 'sheet-importer';
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('inochi_authenticated') === 'true';
+    }
+    return false;
+  });
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [mainProducts, setMainProducts] = useState<MainProduct[]>([]);
   const [tiktokProducts, setTiktokProducts] = useState<MainProduct[]>([]);
@@ -33,6 +40,7 @@ export default function App() {
 
   // Load backend Google Sheet data on mount
   const loadSheetData = async () => {
+    if (!isAuthenticated) return;
     setIsLoading(true);
     try {
       const res = await fetch('/api/sheets-data');
@@ -56,8 +64,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    loadSheetData();
-  }, []);
+    if (isAuthenticated) {
+      loadSheetData();
+    }
+  }, [isAuthenticated]);
 
   // Listen for scroll to show Back to Top button
   useEffect(() => {
@@ -88,6 +98,17 @@ export default function App() {
       behavior: 'smooth'
     });
   };
+
+  if (!isAuthenticated) {
+    return (
+      <LockScreen 
+        onSuccess={() => {
+          sessionStorage.setItem('inochi_authenticated', 'true');
+          setIsAuthenticated(true);
+        }} 
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col antialiased">
