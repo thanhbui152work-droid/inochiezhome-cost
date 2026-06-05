@@ -246,7 +246,8 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
       minSpent: 500000,
       capVal: 50000,
       priority: nextPriority,
-      active: true
+      active: true,
+      voucherType: 'Always On'
     };
     setShopVouchers([...shopVouchers, newVoucher]);
   };
@@ -390,18 +391,31 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
           ? []
           : shopVouchers
               .filter(v => v.active && basePrice >= v.minSpent)
-              .sort((a, b) => b.priority - a.priority); // Highest priority first
+              .map(v => {
+                let discount = 0;
+                if (v.type === 'percent') {
+                  const rawDiscount = basePrice * (v.val / 100);
+                  discount = v.capVal > 0 ? Math.min(rawDiscount, v.capVal) : rawDiscount;
+                } else {
+                  discount = v.val;
+                }
+                return { v, discount };
+              })
+              .sort((a, b) => {
+                // Primary: highest discount amount
+                if (b.discount !== a.discount) {
+                  return b.discount - a.discount;
+                }
+                // Secondary fallback: fallback to priority to keep sorting stable if discounts are identical
+                return b.v.priority - a.v.priority;
+              });
         
         if (eligibleVouchers.length > 0) {
-          const mainVoucher = eligibleVouchers[0];
+          const mainVoucher = eligibleVouchers[0].v;
+          const bestDiscount = eligibleVouchers[0].discount;
           appliedVoucherCode = mainVoucher.code;
           appliedVoucherId = mainVoucher.id;
-          if (mainVoucher.type === 'percent') {
-            const rawDiscount = basePrice * (mainVoucher.val / 100);
-            shopVoucher = mainVoucher.capVal > 0 ? Math.min(rawDiscount, mainVoucher.capVal) : rawDiscount;
-          } else {
-            shopVoucher = mainVoucher.val;
-          }
+          shopVoucher = bestDiscount;
         }
       } else if (vMode === 'manual' && line.selectedVoucherId) {
         const selectedV = shopVouchers.find(v => v.id === line.selectedVoucherId);
@@ -1627,7 +1641,7 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                     CƠ CHẾ & QUẢN LÝ VOUCHER TOÀN GIAN HÀNG (MIN SPEND & CAP GIỚI HẠN)
                   </h3>
                   <p className="text-[11px] text-slate-400 mt-0.5 leading-normal">
-                    Khi bật chế độ <strong>TỰ ĐỘNG (ƯU TIÊN)</strong> trên từng dòng sản phẩm, hệ thống tự động quét & kích hoạt mã có <strong>độ ưu tiên lớn nhất</strong> thỏa điều kiện <strong>Min Spend ≤ Giá bán</strong> của dòng đó.
+                    Khi bật chế độ <strong>TỰ ĐỘNG KHUYẾN NGHỊ</strong> trên từng dòng sản phẩm, hệ thống tự động quét & kích hoạt mã <strong>giảm được nhiều tiền nhất</strong> thỏa điều kiện <strong>Min Spend ≤ Giá bán</strong> của dòng đó.
                   </p>
                 </div>
               </div>
@@ -1650,7 +1664,7 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                     <th className="py-2.5 px-3">Giá trị giảm (Val)</th>
                     <th className="py-2.5 px-3" title="Giá bán sản phẩm tối thiểu ban đầu để được áp mã">Min Spend (Giá bán tối thiểu)</th>
                     <th className="py-2.5 px-3" title="Hạn mức giảm tối đa của Voucher %">Cap tối đa (Giới hạn Cap)</th>
-                    <th className="py-2.5 px-3 text-center" title="Độ ưu tiên để hệ thống tự động chọn (Priority càng lớn càng ưu tiên trước)">Cấp ưu tiên (Priority)</th>
+                    <th className="py-2.5 px-3" title="Loại hình chiến dịch / Voucher Type từ Google Sheet">Loại Voucher (Type)</th>
                     <th className="py-2.5 px-3 text-center">Trạng thái</th>
                     <th className="py-2.5 px-3 text-right">Thao tác</th>
                   </tr>
@@ -1745,25 +1759,15 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                           </div>
                         </td>
 
-                        {/* 6. Priority */}
-                        <td className="py-3 px-3 text-center">
-                          <div className="flex items-center justify-center gap-1.5 max-w-[90px] mx-auto select-none">
-                            <button
-                              type="button"
-                              onClick={() => updateShopVoucher(v.id, { priority: Math.max(1, v.priority - 1) })}
-                              className="cursor-pointer w-5 h-5 bg-slate-100 hover:bg-slate-200 rounded flex items-center justify-center font-bold text-slate-600 text-xs"
-                            >
-                              -
-                            </button>
-                            <span className="font-mono font-extrabold text-xs text-slate-800 w-6 text-center">{v.priority}</span>
-                            <button
-                              type="button"
-                              onClick={() => updateShopVoucher(v.id, { priority: v.priority + 1 })}
-                              className="cursor-pointer w-5 h-5 bg-slate-100 hover:bg-slate-200 rounded flex items-center justify-center font-bold text-slate-600 text-xs"
-                            >
-                              +
-                            </button>
-                          </div>
+                        {/* 6. Voucher Type */}
+                        <td className="py-3 px-3">
+                          <input
+                            type="text"
+                            value={v.voucherType || ''}
+                            placeholder="Always On"
+                            onChange={(e) => updateShopVoucher(v.id, { voucherType: e.target.value })}
+                            className="bg-white border border-slate-200 rounded-lg py-1 px-2.5 font-medium text-slate-700 text-xs w-full focus:outline-none focus:ring-1 focus:ring-rose-500 max-w-[135px]"
+                          />
                         </td>
 
                         {/* 7. Active Status Toggle */}
@@ -1797,7 +1801,7 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
             <div className="text-[10px] text-slate-500 bg-slate-50 border border-slate-150 p-3 rounded-2xl flex items-start gap-1.5 leading-normal">
               <span className="font-bold text-indigo-700">💡 Hướng dẫn vận hành:</span>
               <span>
-                Cơ chế tối ưu (AUTO) sẽ tự động duyệt từ Voucher có <strong>Độ ưu tiên cao nhất</strong> xuống thấp dần, áp dụng mã đầu tiên thỏa mãn điều kiện mua hàng tối thiểu. 
+                Cơ chế tối ưu (AUTO/TỰ ĐỘNG) sẽ tự động tìm kiếm và áp dụng Voucher <strong>giảm được nhiều tiền nhất</strong> thỏa mãn điều kiện giá mua lớn hơn hoặc bằng mức tối thiểu (Min Spend). 
                 Voucher Platform trợ giá được cấu hình trong bảng điều khiển phía trên sẽ được tính trên <strong>Giá sau khi trừ toàn bộ Voucher Shop</strong> như quy tắc thực tế của sàn thương mại điện tử.
               </span>
             </div>
