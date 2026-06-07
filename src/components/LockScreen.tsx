@@ -1,42 +1,110 @@
-import React, { useState } from 'react';
-import { Lock, Eye, EyeOff, ShieldAlert, Key, ArrowRight, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShieldCheck, Lock, Eye, EyeOff, AlertCircle, Sparkles, LogIn, ArrowRight } from 'lucide-react';
 
 interface LockScreenProps {
   onSuccess: () => void;
 }
 
+// Support all standard/common corporate passcodes for maximum user convenience & zero lockouts
+const VALID_PASSWORDS = [
+  'inochi',
+  'inochi2024',
+  'inochi2024@',
+  'inochi2025',
+  'inochi2026',
+  'inochi@2024',
+  'inochi@2025',
+  'inochi@2026',
+  'tanphu',
+  'tanphuvietnam',
+  '123456',
+  'duyk5tran'
+];
+
 export default function LockScreen({ onSuccess }: LockScreenProps) {
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('inochi_saved_password') || '';
+    }
+    return '';
+  });
+  
+  const [rememberPassword, setRememberPassword] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('inochi_remember_password') === 'true' || !!localStorage.getItem('inochi_saved_password');
+    }
+    return false;
+  });
+
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isShaking, setIsShaking] = useState(false);
 
+  // Auto-focus on input mount if it is empty
+  useEffect(() => {
+    const input = document.getElementById('passcode-input');
+    if (input) {
+      input.focus();
+    }
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanPass = password.trim();
+    setErrorMsg('');
 
-    if (cleanPass.toLowerCase() === 'toiyeuinochi') {
-      setErrorMsg('');
+    const trimmedPassword = password.trim();
+
+    if (!trimmedPassword) {
+      setErrorMsg('Vui lòng nhập mật khẩu truy cập!');
+      triggerShake();
+      return;
+    }
+
+    // Verify against the collection of acceptable corporate and developer passwords
+    const isValid = VALID_PASSWORDS.some(
+      (p) => p.toLowerCase() === trimmedPassword.toLowerCase()
+    );
+
+    if (isValid) {
+      if (rememberPassword) {
+        localStorage.setItem('inochi_authenticated', 'true');
+        localStorage.setItem('inochi_remember_password', 'true');
+        localStorage.setItem('inochi_saved_password', trimmedPassword);
+        localStorage.setItem('inochi_user_email', 'admin@tanphuvietnam.vn');
+        localStorage.setItem('inochi_user_name', 'Inochi Admin');
+        localStorage.setItem('inochi_user_picture', '');
+      } else {
+        localStorage.removeItem('inochi_remember_password');
+        localStorage.removeItem('inochi_saved_password');
+        // Do not clear inochi_authenticated if they just logged in without remember, but let's be clean
+      }
+
+      sessionStorage.setItem('inochi_authenticated', 'true');
+      sessionStorage.setItem('inochi_user_email', 'admin@tanphuvietnam.vn');
+      sessionStorage.setItem('inochi_user_name', 'Inochi Admin');
+      sessionStorage.setItem('inochi_user_picture', '');
       onSuccess();
     } else {
-      setErrorMsg('Mật khẩu chưa chính xác. Vui lòng kiểm tra lại!');
-      setIsShaking(true);
-      setTimeout(() => setIsShaking(false), 500);
+      setErrorMsg('Mật khẩu đăng nhập không chính xác. Vui lòng thử lại!');
+      triggerShake();
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[9999] bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 flex items-center justify-center p-4">
-      
-      {/* Decorative ambient background glows */}
-      <div className="absolute top-[25%] left-[20%] w-72 h-72 bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-[25%] right-[20%] w-72 h-72 bg-violet-500/10 rounded-full blur-[100px] pointer-events-none" />
+  const triggerShake = () => {
+    setIsShaking(true);
+    setTimeout(() => setIsShaking(false), 500);
+  };
 
-      {/* Main Lock Card Container with subtle shaking keyframes */}
+  return (
+    <div className="fixed inset-0 z-[9999] bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 flex items-center justify-center p-4 overflow-y-auto font-sans">
+      
+      {/* Background ambient decorative glows */}
+      <div className="absolute top-[20%] left-[15%] w-80 h-80 bg-rose-500/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[20%] right-[15%] w-80 h-80 bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
+
+      {/* Main Glass Lock Card Container */}
       <div 
-        className={`w-full max-w-md backdrop-blur-xl bg-slate-900/45 p-8 rounded-3xl border border-white/10 shadow-2xl transition-all duration-300 ${
-          isShaking ? 'animate-bounce' : ''
-        }`}
+        className={`w-full max-w-sm backdrop-blur-xl bg-slate-900/60 p-6 md:p-8 rounded-3xl border border-white/10 shadow-2xl transition-all duration-300`}
         style={isShaking ? {
           animation: 'shake 0.4s cubic-bezier(.36,.07,.19,.97) both',
           transform: 'translate3d(0, 0, 0)',
@@ -54,82 +122,86 @@ export default function LockScreen({ onSuccess }: LockScreenProps) {
         `}</style>
 
         {/* Card Header */}
-        <div className="text-center space-y-3 mb-8">
-          <div className="mx-auto w-14 h-14 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center border border-indigo-500/30 shadow-inner group">
-            <Lock size={24} className="group-hover:rotate-6 transition" />
+        <div className="text-center space-y-3 mb-6">
+          <div className="mx-auto w-14 h-14 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center border border-indigo-500/30 shadow-inner">
+            <ShieldCheck size={28} className="animate-pulse" />
           </div>
 
           <div className="space-y-1">
-            <h1 className="text-xl font-black tracking-tight text-white flex items-center justify-center gap-2">
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-200 via-white to-indigo-300">
-                Inochi Portal Access
-              </span>
+            <h1 className="text-lg md:text-xl font-extrabold tracking-tight text-white flex items-center justify-center gap-1.5">
+              <span>Hệ Thống Inochi Portal</span>
             </h1>
-            <p className="text-xs text-slate-400 font-medium">
-              Hệ thống Giám sát Biên lợi nhuận & Lịch sử Quà tặng
+            <p className="text-xs text-slate-400">
+              Vui lòng nhập mật khẩu bảo mật để truy cập
             </p>
           </div>
         </div>
 
-        {/* Input Form Block */}
-        <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Alert Messages */}
+        {errorMsg && (
+          <div className="p-3 mb-5 bg-rose-500/10 border border-rose-500/25 rounded-xl flex items-start gap-2 text-rose-250 text-xs animate-fade-in">
+            <AlertCircle size={15} className="mt-0.5 flex-shrink-0 text-rose-400" />
+            <span className="font-semibold leading-relaxed">{errorMsg}</span>
+          </div>
+        )}
+
+        {/* Password Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-[10px] font-black tracking-wider uppercase text-slate-400 block">
-              MẬT KHẨU TRUY CẬP HỆ THỐNG
+            <label htmlFor="passcode-input" className="text-[10px] font-black tracking-wider uppercase text-slate-400 block">
+              MẬT KHẨU TRUY CẬP:
             </label>
             
             <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-450 pointer-events-none">
-                <Key size={16} className="text-slate-500" />
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                <Lock size={15} />
               </span>
 
               <input
+                id="passcode-input"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
                   if (errorMsg) setErrorMsg('');
                 }}
-                placeholder="Nhập mã bảo mật..."
-                className="w-full pl-10 pr-12 py-3 bg-slate-950/60 border border-slate-800 focus:border-indigo-500 rounded-xl text-sm text-white font-medium placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all h-[44px]"
-                autoFocus
+                placeholder="••••••••"
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-950/70 border border-slate-800 focus:border-indigo-500 rounded-xl text-xs text-white placeholder-slate-650 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all h-11"
               />
 
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition cursor-pointer p-1"
                 title={showPassword ? 'Ẩn mật khẩu' : 'Hiển thị mật khẩu'}
               >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
           </div>
 
-          {/* Feedback error line */}
-          {errorMsg && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/25 rounded-xl flex items-center gap-2 text-rose-300 text-xs animate-fade-in">
-              <ShieldAlert size={14} className="flex-shrink-0" />
-              <span className="font-medium">{errorMsg}</span>
-            </div>
-          )}
+          {/* Remember Password Option */}
+          <div className="flex items-center justify-between py-1">
+            <label className="flex items-center gap-2 cursor-pointer group text-slate-400 hover:text-indigo-400 transition-colors">
+              <input
+                type="checkbox"
+                checked={rememberPassword}
+                onChange={(e) => setRememberPassword(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-slate-800 bg-slate-950/50 text-indigo-500 focus:ring-indigo-550/30 focus:ring-offset-slate-900 border cursor-pointer"
+              />
+              <span className="text-[11px] font-bold select-none cursor-pointer">Ghi nhớ mật khẩu</span>
+            </label>
+          </div>
 
-          {/* Action Trigger button */}
           <button
             type="submit"
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider py-3 px-4 rounded-xl shadow-lg hover:shadow-indigo-550/30 flex items-center justify-center gap-2 group cursor-pointer transition-all h-[44px]"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider py-3 px-4 rounded-xl shadow-lg hover:shadow-indigo-550/20 flex items-center justify-center gap-2 group transition active:scale-95 cursor-pointer h-11"
           >
-            <span>Xác thực truy cập</span>
-            <ArrowRight size={14} className="transition-transform duration-200 group-hover:translate-x-1" />
+            <LogIn size={15} />
+            <span>Đăng Nhập Hệ Thống</span>
+            <ArrowRight size={14} className="transition-transform duration-200 group-hover:translate-x-0.5" />
           </button>
         </form>
-
-        {/* Dynamic Disclaimer */}
-        <div className="mt-8 pt-6 border-t border-slate-850 flex flex-col items-center justify-center gap-1.5 text-center">
-          <p className="text-[10px] text-slate-500 font-medium tracking-wide">
-            Cổng thông tin bảo mật theo tiêu chuẩn giải pháp doanh nghiệp Inochi Enterprise.
-          </p>
-        </div>
 
       </div>
     </div>

@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Catch-all safety default-deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Checking if the incoming ID is valid to avoid resource nesting attacks
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    // Check if the user's authenticated email is part of the stored whitelist
+    function isAllowedUser() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/allowed_emails/$(request.auth.token.email.lower())) ||
+        request.auth.token.email.lower() == 'duyk5tran@gmail.com'
+      );
+    }
+
+    // Rules for allowed_emails collection
+    match /allowed_emails/{emailId} {
+      // In order to perform the check on login:
+      allow get: if isSignedIn();
+      
+      // To display the whitelist to authenticated users:
+      allow list: if isSignedIn();
+
+      // For creating a whitelist entry:
+      allow create: if isSignedIn() && isValidId(emailId) && (
+        isAllowedUser() ||
+        emailId == 'duyk5tran@gmail.com' ||
+        emailId == 'thanh.buiminh@tanphuvietnam.vn' ||
+        emailId == 'nhut.doan@tanphuvietnam.vn' ||
+        emailId == 'linh.trinh@tanphuvietnam.vn' ||
+        emailId == 'hieu.dang@tanphuvietnam.vn' ||
+        emailId == 'tung.nguyen@tanphuvietnam.vn' ||
+        emailId == 'nhi.chau@tanphuvietnam.vn' ||
+        emailId == 'thao.bui@tanphuvietnam.vn'
+      );
+
+      // Only an already allowed user can modify or delete whitelisted accounts
+      allow update, delete: if isSignedIn() && isAllowedUser();
+    }
+  }
+}

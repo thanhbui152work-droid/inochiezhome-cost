@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "AllowedEmail": {
+      "title": "AllowedEmail",
+      "description": "Emails that are authorized to access the system",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "The allowed Google email in lowercase"
+        },
+        "addedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp indicating when the email was added to the allowed list"
+        },
+        "addedBy": {
+          "type": "string",
+          "description": "Who added this email to the list"
+        }
+      },
+      "required": ["email"]
+    }
+  },
+  "firestore": {
+    "/allowed_emails/{emailId}": {
+      "schema": "AllowedEmail",
+      "description": "Collection of authorized email addresses for Inochi Portal"
+    }
+  }
+}

@@ -9,7 +9,7 @@ import LockScreen from './components/LockScreen';
 import { 
   LayoutDashboard, Brain, Calculator, Sparkles, 
   HelpCircle, RefreshCw, Layers, GraduationCap, Gift, ChevronRight, FileSpreadsheet,
-  ArrowUp, TrendingUp
+  ArrowUp, TrendingUp, LogOut
 } from 'lucide-react';
 
 declare global {
@@ -23,7 +23,7 @@ type NavTab = 'dashboard' | 'pricing' | 'gmdaily' | 'advisor' | 'sheet-importer'
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('inochi_authenticated') === 'true';
+      return sessionStorage.getItem('inochi_authenticated') === 'true' || localStorage.getItem('inochi_authenticated') === 'true';
     }
     return false;
   });
@@ -38,6 +38,33 @@ export default function App() {
   const [sheetSource, setSheetSource] = useState<string>('live_google_sheet');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [userPicture, setUserPicture] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      setUserEmail(sessionStorage.getItem('inochi_user_email') || localStorage.getItem('inochi_user_email') || 'admin@tanphuvietnam.vn');
+      setUserName(sessionStorage.getItem('inochi_user_name') || localStorage.getItem('inochi_user_name') || 'Inochi Admin');
+      setUserPicture(sessionStorage.getItem('inochi_user_picture') || localStorage.getItem('inochi_user_picture') || '');
+    } else {
+      setUserEmail(null);
+      setUserName(null);
+      setUserPicture(null);
+    }
+  }, [isAuthenticated]);
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('inochi_authenticated');
+    sessionStorage.removeItem('inochi_user_email');
+    sessionStorage.removeItem('inochi_user_name');
+    sessionStorage.removeItem('inochi_user_picture');
+    localStorage.removeItem('inochi_authenticated');
+    localStorage.removeItem('inochi_user_email');
+    localStorage.removeItem('inochi_user_name');
+    localStorage.removeItem('inochi_user_picture');
+    setIsAuthenticated(false);
+  };
 
   // Load backend Google Sheet data on mount
   const loadSheetData = async () => {
@@ -154,6 +181,39 @@ export default function App() {
                   Grounding AI Active
                 </span>
               </div>
+
+              {/* Profile and Logout info block */}
+              {userEmail && (
+                <div className="flex items-center gap-2 border-l border-slate-200 pl-3 leading-none select-none">
+                  {userPicture ? (
+                    <img 
+                      src={userPicture} 
+                      alt={userName || 'User'} 
+                      className="w-7 h-7 rounded-full border border-slate-200 shadow-inner animate-fade-in"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-extrabold text-[10px] border border-indigo-150 animate-fade-in">
+                      {(userName || userEmail || 'U').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="hidden md:block text-left animate-fade-in">
+                    <span className="block text-xs font-bold text-slate-800 leading-tight">
+                      {userName || userEmail.split('@')[0]}
+                    </span>
+                    <span className="block text-[9px] text-slate-400 leading-none font-mono">
+                      {userEmail}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-55 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
+                    title="Đăng xuất"
+                  >
+                    <LogOut size={14} />
+                  </button>
+                </div>
+              )}
             </div>
 
           </div>
