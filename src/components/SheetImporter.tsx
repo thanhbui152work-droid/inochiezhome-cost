@@ -76,10 +76,14 @@ interface GroupedMainItem {
   })[];
 }
 
+
+
 export default function SheetImporter({ mainProducts, cogsProducts, stockRecords }: SheetImporterProps) {
   // Pasted raw spreadsheet data state
   const [pastedText, setPastedText] = useState<string>('');
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+
 
   // Auto-sync from clipboard on focus if permission already granted
   React.useEffect(() => {
@@ -133,7 +137,7 @@ export default function SheetImporter({ mainProducts, cogsProducts, stockRecords
   // Custom Shopee Fee configs for this calculator workspace
   const [feeConfigs, setFeeConfigs] = useState({
     fixedFee: { type: 'percent', val: 17 } as FeeItem,
-    infraFee: { type: 'value', val: 3000 } as FeeItem,
+    infraFee: { type: 'value', val: 5500 } as FeeItem,
     paymentFee: { type: 'percent', val: 6.0 } as FeeItem,
     voucherXtra: { type: 'percent', val: 5.0 } as FeeItem,
     voucherXtraCap: 50000,
@@ -141,7 +145,10 @@ export default function SheetImporter({ mainProducts, cogsProducts, stockRecords
     ffmFee: { type: 'percent', val: 5.0 } as FeeItem,
     returnFee: { type: 'percent', val: 1.0 } as FeeItem,
     platformVoucher: { type: 'percent', val: 20.0 } as FeeItem,
-    platformVoucherCap: 150000,
+    platformVoucherCap: 0,
+    voucherSellerFeeActive: true,
+    voucherSellerFee: { type: 'percent', val: 2.0 } as FeeItem,
+    voucherSellerFeeCap: 50000
   });
 
   const [activeItemDetails, setActiveItemDetails] = useState<string | null>(null);
@@ -254,6 +261,7 @@ export default function SheetImporter({ mainProducts, cogsProducts, stockRecords
   // Grouped gifts for display in matching gifts picker
   const inochiGifts = useMemo(() => {
     return cogsProducts.filter(p => {
+      if (!p || !p.name) return false;
       // Exclude main appliances to focus on actual gift items
       const isAppliance = p.name.includes("Nồi chiên") || p.name.includes("Cơm điện") || p.name.includes("Máy rửa rau");
       return !isAppliance && p.cogs > 0;
@@ -287,7 +295,7 @@ export default function SheetImporter({ mainProducts, cogsProducts, stockRecords
         return true;
       });
 
-      const firstWithImg = variants.find(v => v.img && v.img.trim() !== "" && !v.img.includes("placeholder"));
+      const firstWithImg = variants.find(v => v.img && typeof v.img === 'string' && v.img.trim() !== "" && !v.img.includes("placeholder"));
       const img = firstWithImg ? firstWithImg.img : (variants[0]?.img || "");
       const category = variants[0]?.category || "Quà tặng";
       const name = variants[0]?.name || "";
@@ -305,10 +313,10 @@ export default function SheetImporter({ mainProducts, cogsProducts, stockRecords
 
     const query = giftSearchTerm.trim().toLowerCase();
     return mapped.filter(item => {
-      const matchMain = item.mainSku.toLowerCase().includes(query) || item.category.toLowerCase().includes(query);
+      const matchMain = (item.mainSku || '').toLowerCase().includes(query) || (item.category || '').toLowerCase().includes(query);
       const matchVariant = item.variants.some(v => 
-        v.name.toLowerCase().includes(query) || 
-        v.skuPhanLoai.toLowerCase().includes(query)
+        (v.name || '').toLowerCase().includes(query) || 
+        (v.skuPhanLoai || '').toLowerCase().includes(query)
       );
       return matchMain || matchVariant;
     });
@@ -413,51 +421,54 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
 
   // Parsing & Calculation engine
   const processedData = useMemo(() => {
-    if (!pastedText.trim()) return { groupedItems: [], stats: null, warnings: [] };
-
-    const lines = pastedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length === 0) return { groupedItems: [], stats: null, warnings: [] };
-
-    // Standard column indices
-    let idxCampaign = 0;
-    let idxBarcode = 1;
-    let idxVpCode = 2;
-    let idxType = 3;
-    let idxName = 4;
-    let idxQty = 5;
-    let idxRsp = 6;
-    let idxLowest = 7;
-
-    const firstLineCells = lines[0].split('\t').map(c => c.trim().toLowerCase());
-    const isHeaderRow = firstLineCells.some(cell => 
-      cell.includes('campaign') || 
-      cell.includes('barcode') || 
-      cell.includes('mã') || 
-      cell.includes('loại') || 
-      cell.includes('sản phẩm') || 
-      cell.includes('giá')
-    );
-
-    let dataLines = lines;
-    if (isHeaderRow) {
-      // Find matching index dynamically
-      dataLines = lines.slice(1);
-      firstLineCells.forEach((cell, idx) => {
-        if (cell.includes('campaign') || cell.includes('chiến dịch')) idxCampaign = idx;
-        else if (cell.includes('barcode')) idxBarcode = idx;
-        else if (cell.includes('vp') || cell.includes('sku')) idxVpCode = idx;
-        else if (cell.includes('loại') || cell.includes('type')) idxType = idx;
-        else if (cell.includes('tên') || cell.includes('sản phẩm') || cell.includes('product')) idxName = idx;
-        else if (cell.includes('số') || cell.includes('quantity') || cell.includes('sl') || cell.includes('lượng')) idxQty = idx;
-        else if (cell.includes('niêm') || cell.includes('rsp') || cell.includes('mức')) idxRsp = idx;
-        else if (cell.includes('thấp') || cell.includes('giá bán') || cell.includes('thỏaa')) idxLowest = idx;
-      });
+    if (!pastedText.trim()) {
+      return { groupedItems: [], stats: null, warnings: [] };
     }
 
-    const rawRows = dataLines.map(line => line.split('\t'));
     const warnings: string[] = [];
     const groupedItems: GroupedMainItem[] = [];
-    let currentMain: GroupedMainItem | null = null;
+
+    if (pastedText.trim()) {
+      const lines = pastedText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length > 0) {
+        // Standard column indices
+        let idxCampaign = 0;
+        let idxBarcode = 1;
+        let idxVpCode = 2;
+        let idxType = 3;
+        let idxName = 4;
+        let idxQty = 5;
+        let idxRsp = 6;
+        let idxLowest = 7;
+
+        const firstLineCells = lines[0].split('\t').map(c => c.trim().toLowerCase());
+        const isHeaderRow = firstLineCells.some(cell => 
+          cell.includes('campaign') || 
+          cell.includes('barcode') || 
+          cell.includes('mã') || 
+          cell.includes('loại') || 
+          cell.includes('sản phẩm') || 
+          cell.includes('giá')
+        );
+
+        let dataLines = lines;
+        if (isHeaderRow) {
+          // Find matching index dynamically
+          dataLines = lines.slice(1);
+          firstLineCells.forEach((cell, idx) => {
+            if (cell.includes('campaign') || cell.includes('chiến dịch')) idxCampaign = idx;
+            else if (cell.includes('barcode')) idxBarcode = idx;
+            else if (cell.includes('vp') || cell.includes('sku')) idxVpCode = idx;
+            else if (cell.includes('loại') || cell.includes('type')) idxType = idx;
+            else if (cell.includes('tên') || cell.includes('sản phẩm') || cell.includes('product')) idxName = idx;
+            else if (cell.includes('số') || cell.includes('quantity') || cell.includes('sl') || cell.includes('lượng')) idxQty = idx;
+            else if (cell.includes('niêm') || cell.includes('rsp') || cell.includes('mức')) idxRsp = idx;
+            else if (cell.includes('thấp') || cell.includes('giá bán') || cell.includes('thỏaa')) idxLowest = idx;
+          });
+        }
+
+        const rawRows = dataLines.map(line => line.split('\t'));
+        let currentMain: GroupedMainItem | null = null;
 
     rawRows.forEach((row, rowIndex) => {
       // Align columns safely
@@ -523,7 +534,7 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
           match = mainProducts.find(p => p.barcode === barcode);
         }
         if (!match && name) {
-          match = mainProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
+          match = mainProducts.find(p => p.name && p.name.toLowerCase() === name.toLowerCase());
         }
 
         // Determine COGS: prefer match.cogsUpdated, then cogsMatch.cogs, then fallback
@@ -572,7 +583,7 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
           }
         }
         if (!giftMatch && name) {
-          giftMatch = cogsProducts.find(g => g.name.toLowerCase() === name.toLowerCase());
+          giftMatch = cogsProducts.find(g => g.name && g.name.toLowerCase() === name.toLowerCase());
         }
         if (!giftMatch && barcode) {
           giftMatch = cogsProducts.find(g => g.barcode === barcode);
@@ -584,7 +595,7 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
             giftMatch = mainProducts.find(p => p.vpCode === vpCode) as any;
           }
           if (!giftMatch && name) {
-            giftMatch = mainProducts.find(p => p.name.toLowerCase() === name.toLowerCase()) as any;
+            giftMatch = mainProducts.find(p => p.name && p.name.toLowerCase() === name.toLowerCase()) as any;
           }
           if (!giftMatch && barcode) {
             giftMatch = mainProducts.find(p => p.barcode === barcode) as any;
@@ -611,11 +622,13 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
         });
       }
     });
-
-    // If activeItemDetails is null, select the first item
-    if (groupedItems.length > 0 && !activeItemDetails) {
-      setActiveItemDetails(groupedItems[0].id);
+      }
     }
+
+
+
+    // Removed render-phase setActiveItemDetails to prevent infinite render loops and blank screen crashes.
+    // Syncing of active item is now handled safely in a side-effect useEffect hook below.
 
     // Now compute the whole Shopee spreadsheet formula for each GroupedMainItem
     const computedGroups = groupedItems.map(item => {
@@ -634,11 +647,14 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
       const infraFee = calculateValue(feeConfigs.infraFee, basePrice);
       const paymentFee = calculateValue(feeConfigs.paymentFee, basePrice);
       const voucherXtra = calculateValue(feeConfigs.voucherXtra, basePrice, feeConfigs.voucherXtraCap);
+      const voucherSellerFee = feeConfigs.voucherSellerFeeActive
+        ? calculateValue(feeConfigs.voucherSellerFee, basePrice, feeConfigs.voucherSellerFeeCap)
+        : 0;
       const commission = calculateValue(feeConfigs.commission, basePrice);
       const ffmFee = calculateValue(feeConfigs.ffmFee, basePrice);
       const returnFee = calculateValue(feeConfigs.returnFee, basePrice);
 
-      const totalFees = fixedFee + infraFee + paymentFee + voucherXtra + commission + ffmFee + returnFee;
+      const totalFees = fixedFee + infraFee + paymentFee + voucherXtra + voucherSellerFee + commission + ffmFee + returnFee;
 
       // Net Pool: Giá thấp nhất (basePrice) - Shop Voucher - Phí sàn - Quà tặng COGS
       const netPool = basePrice - shopVoucher - totalFees - actualGiftCogs;
@@ -661,7 +677,7 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
       const computedVariants = itemVariants.map(variant => {
         const vBasePrice = variant.basePrice;
         const vShopVoucher = 0;
-        const vActualGiftCogs = variant.gifts.reduce((sum, g) => sum + (g.giftCogs * g.quantity), 0);
+        const vActualGiftCogs = (variant.gifts || []).reduce((sum, g) => sum + (g.giftCogs * g.quantity), 0);
 
         const vPlatformBasePrice = Math.max(0, vBasePrice - vShopVoucher);
         const vPlatformVoucherCost = calculateValue(feeConfigs.platformVoucher, vPlatformBasePrice, feeConfigs.platformVoucherCap);
@@ -670,11 +686,14 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
         const vInfraFee = calculateValue(feeConfigs.infraFee, vBasePrice);
         const vPaymentFee = calculateValue(feeConfigs.paymentFee, vBasePrice);
         const vVoucherXtra = calculateValue(feeConfigs.voucherXtra, vBasePrice, feeConfigs.voucherXtraCap);
+        const vVoucherSellerFee = feeConfigs.voucherSellerFeeActive
+          ? calculateValue(feeConfigs.voucherSellerFee, vBasePrice, feeConfigs.voucherSellerFeeCap)
+          : 0;
         const vCommission = calculateValue(feeConfigs.commission, vBasePrice);
         const vFfmFee = calculateValue(feeConfigs.ffmFee, vBasePrice);
         const vReturnFee = calculateValue(feeConfigs.returnFee, vBasePrice);
 
-        const vTotalFees = vFixedFee + vInfraFee + vPaymentFee + vVoucherXtra + vCommission + vFfmFee + vReturnFee;
+        const vTotalFees = vFixedFee + vInfraFee + vPaymentFee + vVoucherXtra + vVoucherSellerFee + vCommission + vFfmFee + vReturnFee;
         const vNetPool = vBasePrice - vShopVoucher - vTotalFees - vActualGiftCogs;
         const vNetProfit = vNetPool - item.mainProductCogs;
 
@@ -697,6 +716,7 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
             infraFee: vInfraFee,
             paymentFee: vPaymentFee,
             voucherXtra: vVoucherXtra,
+            voucherSellerFee: vVoucherSellerFee,
             commission: vCommission,
             ffmFee: vFfmFee,
             returnFee: vReturnFee,
@@ -721,6 +741,7 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
           infraFee,
           paymentFee,
           voucherXtra,
+          voucherSellerFee,
           commission,
           ffmFee,
           returnFee,
@@ -775,6 +796,20 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
       warnings
     };
   }, [pastedText, feeConfigs, mainProducts, cogsProducts, customVariants]);
+
+  // Safely auto-select or adjust activeItemDetails outside of render phase (avoiding blank screen crash)
+  React.useEffect(() => {
+    if (processedData.groupedItems.length > 0) {
+      const exists = processedData.groupedItems.some(item => item.id === activeItemDetails);
+      if (!exists) {
+        setActiveItemDetails(processedData.groupedItems[0].id);
+      }
+    } else {
+      if (activeItemDetails !== null) {
+        setActiveItemDetails(null);
+      }
+    }
+  }, [processedData.groupedItems, activeItemDetails]);
 
   const activeGroupItem = useMemo(() => {
     if (!processedData.groupedItems || processedData.groupedItems.length === 0) return null;
@@ -946,59 +981,61 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Paste Box Area */}
-        <div className="col-span-1 lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-5 shadow-3xs flex flex-col space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
-              <Clipboard size={14} className="text-indigo-600 animate-pulse" />
-              Khung Dán Dữ Liệu (Ctrl+v)
-            </label>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handlePasteFromClipboard}
-                className="cursor-pointer text-[10.5px] bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded-full border border-slate-250 flex items-center gap-1.5 shadow-3xs transition hover:scale-102"
-                title="Tự động đọc bảng tính bạn vừa Copy từ Google Sheets và dán vào đây"
-              >
-                <RefreshCw size={11} className="text-indigo-600" />
-                Đồng bộ Clipboard
-              </button>
-              <span className="text-[10px] text-slate-450 font-medium hidden sm:inline">Tự động nhận diện dán</span>
+        <div className="col-span-1 lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-5 shadow-3xs flex flex-col space-y-4">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <label className="text-xs font-black uppercase tracking-wider text-slate-705 flex items-center gap-2">
+                <Clipboard size={14} className="text-indigo-600 animate-pulse" />
+                Khung Dán Dữ Liệu (Ctrl+v)
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePasteFromClipboard}
+                  className="cursor-pointer text-[10.5px] bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded-full border border-slate-250 flex items-center gap-1.5 shadow-3xs transition hover:scale-102"
+                  title="Tự động đọc bảng tính bạn vừa Copy từ Google Sheets và dán vào đây"
+                >
+                  <RefreshCw size={11} className="text-indigo-600" />
+                  Đồng bộ Clipboard
+                </button>
+                <span className="text-[10px] text-slate-450 font-medium hidden sm:inline">Tự động nhận diện dán</span>
+              </div>
             </div>
-          </div>
 
-          {syncStatus && (
-            <div className={`text-[11px] px-3 py-2 rounded-xl font-bold flex items-center gap-2 transition-all ${
-              syncStatus.includes("phím Ctrl+V") || syncStatus.includes("trống")
-                ? "bg-amber-50 text-amber-700 border border-amber-250"
-                : "bg-emerald-50 text-emerald-800 border border-emerald-250"
-            }`}>
-              <span className="text-xs">🔄</span>
-              <span>{syncStatus}</span>
-            </div>
-          )}
+            {syncStatus && (
+              <div className={`text-[11px] px-3 py-2 rounded-xl font-bold flex items-center gap-2 transition-all ${
+                syncStatus.includes("phím Ctrl+V") || syncStatus.includes("trống") || syncStatus.includes("Vui lòng")
+                  ? "bg-amber-50 text-amber-700 border border-amber-250"
+                  : "bg-emerald-50 text-emerald-800 border border-emerald-250"
+              }`}>
+                <span className="text-xs">🔄</span>
+                <span>{syncStatus}</span>
+              </div>
+            )}
 
-          <textarea
-            value={pastedText}
-            onChange={(e) => setPastedText(e.target.value)}
-            placeholder={`Bấm Ctrl+V vào đây để dán bảng từ Sheets...
+            <textarea
+              value={pastedText}
+              onChange={(e) => setPastedText(e.target.value)}
+              placeholder={`Bấm Ctrl+V vào đây để dán bảng từ Sheets...
 
 Cột quy chuẩn mẫu từ Google Sheet:
 Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | Số lượng | Giá niêm yết | Giá thấp nhất`}
-            className="w-full h-44 bg-slate-50/50 border border-slate-200 rounded-2xl p-4 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-505/20 focus:bg-white transition placeholder-slate-350 leading-relaxed resize-none"
-          />
+              className="w-full h-44 bg-slate-50/50 border border-slate-200 rounded-2xl p-4 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-505/20 focus:bg-white transition placeholder-slate-350 leading-relaxed resize-none"
+            />
 
-          <div className="flex justify-between items-center text-[11px] text-indigo-600 font-semibold bg-indigo-50/40 p-3 rounded-xl border border-indigo-100/50">
-            <span className="flex items-center gap-1.5">
-              <Info size={13} />
-              Cơ cấu: Sản phẩm nào Loại "Main" thì các sản phẩm "Gift" phía dưới sẽ được phân phối tặng kèm.
-            </span>
-            {pastedText && (
-              <button 
-                onClick={() => setPastedText('')}
-                className="text-[10px] text-rose-600 hover:text-rose-700 font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition"
-              >
-                <RotateCcw size={11} /> Xoá rỗng
-              </button>
-            )}
+            <div className="flex justify-between items-center text-[11px] text-indigo-600 font-semibold bg-indigo-50/40 p-3 rounded-xl border border-indigo-100/50">
+              <span className="flex items-center gap-1.5">
+                <Info size={13} />
+                Cơ cấu: Sản phẩm nào Loại "Main" thì các sản phẩm "Gift" phía dưới sẽ được phân phối tặng kèm.
+              </span>
+              {pastedText && (
+                <button 
+                  onClick={() => setPastedText('')}
+                  className="text-[10px] text-rose-600 hover:text-rose-700 font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition"
+                >
+                  <RotateCcw size={11} /> Xoá rỗng
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1065,6 +1102,49 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
                 />
                 <span className="bg-slate-200/70 text-slate-600 px-2 py-1.5 font-bold font-mono text-[10px] flex items-center">%</span>
               </div>
+            </div>
+
+            <div className="flex flex-col justify-between">
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5 cursor-pointer" htmlFor="importer_use_voucher_seller">
+                <input
+                  id="importer_use_voucher_seller"
+                  type="checkbox"
+                  checked={feeConfigs.voucherSellerFeeActive || false}
+                  onChange={(e) => setFeeConfigs(prev => ({ ...prev, voucherSellerFeeActive: e.target.checked }))}
+                  className="rounded border-slate-300 text-indigo-650 focus:ring-indigo-500 accent-indigo-650 cursor-pointer"
+                />
+                <span>Phí Phụ Voucher</span>
+              </label>
+              {feeConfigs.voucherSellerFeeActive ? (
+                <div className="flex gap-1.5 animate-fade-in">
+                  <div className="flex rounded-lg shadow-3xs overflow-hidden border border-slate-200 w-[45%]">
+                    <input 
+                      type="number" 
+                      step="0.1"
+                      value={feeConfigs.voucherSellerFee?.val ?? 2.0} 
+                      onChange={(e) => setFeeConfigs(prev => ({ ...prev, voucherSellerFee: { ...(prev.voucherSellerFee || { type: 'percent', val: 2.0 }), val: parseFloat(e.target.value) || 0 } }))}
+                      className="w-full bg-slate-50 px-1 py-1 text-center font-bold text-slate-800 text-[11px] focus:outline-none" 
+                    />
+                    <span className="bg-slate-200/70 text-slate-600 px-1 py-1 font-bold font-mono text-[9px] flex items-center">%</span>
+                  </div>
+                  <div className="flex rounded-lg shadow-3xs overflow-hidden border border-slate-200 w-[55%]">
+                    <input 
+                      type="text" 
+                      value={(feeConfigs.voucherSellerFeeCap ?? 50000).toLocaleString('vi-VN')} 
+                      onChange={(e) => {
+                        const raw = parseInt(e.target.value.replace(/[^0-9]/g, '')) || 0;
+                        setFeeConfigs(prev => ({ ...prev, voucherSellerFeeCap: raw }));
+                      }}
+                      className="w-full bg-slate-50 px-1 py-1 text-right font-bold text-slate-800 text-[11px] focus:outline-none font-mono" 
+                    />
+                    <span className="bg-slate-200/70 text-slate-600 px-1 py-1 font-bold font-mono text-[9px] flex items-center">đ</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[9px] text-slate-400 font-bold py-1 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200 leading-tight">
+                  Tắt phí 2%
+                </div>
+              )}
             </div>
 
             <div>
@@ -1551,6 +1631,12 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
                       <span className="font-sans font-medium">Gói Voucher X-tra ({feeConfigs.voucherXtra.val}%):</span>
                       <span>-{formatVND(activeGroupItem.metrics.voucherXtra)}</span>
                     </div>
+                    {activeGroupItem.metrics.voucherSellerFee > 0 && (
+                      <div className="flex justify-between font-semibold text-indigo-755 bg-indigo-50/40 rounded-sm px-0.5">
+                        <span className="font-sans">Phí sử dụng Voucher ({(feeConfigs.voucherSellerFee?.val ?? 2)}%):</span>
+                        <span>-{formatVND(activeGroupItem.metrics.voucherSellerFee)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="font-sans font-medium">Kho bãi FFM ({feeConfigs.ffmFee.val}%):</span>
                       <span>-{formatVND(activeGroupItem.metrics.ffmFee)}</span>
@@ -1780,18 +1866,18 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
                       <label className="text-[10px] uppercase font-black tracking-wider text-slate-400 block font-sans">Giá bán thương lượng mới (VND)</label>
                       <div className="relative">
                         <input 
-                          type="number" 
-                          value={variant.basePrice}
+                          type="text" 
+                          value={variant.basePrice === 0 ? '' : variant.basePrice.toLocaleString('vi-VN')}
                           onChange={(e) => {
-                            const newVal = Number(e.target.value) || 0;
+                            const raw = parseInt(e.target.value.replace(/[^0-9]/g, '')) || 0;
                             setCustomVariants(prev => {
                               const list = [...(prev[itemId] || [])];
-                              list[variantIndex] = { ...list[variantIndex], basePrice: newVal };
+                              list[variantIndex] = { ...list[variantIndex], basePrice: raw };
                               return { ...prev, [itemId]: list };
                             });
                           }}
                           className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl pl-3.5 pr-12 py-2 text-xs font-mono font-black text-slate-800 transition focus:outline-hidden"
-                          placeholder="Ví dụ: 1150000"
+                          placeholder="Ví dụ: 1.150.000"
                         />
                         <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] uppercase font-black text-slate-400 font-mono">đ</span>
                       </div>

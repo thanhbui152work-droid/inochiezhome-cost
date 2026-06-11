@@ -13,6 +13,10 @@ interface PricingCalculatorProps {
   cogsProducts: CogsProduct[];
   stockRecords?: StockRecord[];
   shopVouchers?: ShopVoucher[];
+  shopVouchersState?: ShopVoucher[];
+  setShopVouchersState?: React.Dispatch<React.SetStateAction<ShopVoucher[]>>;
+  shopeeFeeConfigsState?: any;
+  setShopeeFeeConfigsState?: React.Dispatch<React.SetStateAction<any>>;
 }
 
 interface FeeItem {
@@ -39,17 +43,28 @@ interface SimulatedLine {
   selectedVoucherId?: string;
 }
 
-export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogsProducts, stockRecords, shopVouchers: propsShopVouchers }: PricingCalculatorProps) {
+export default function PricingCalculator({ 
+  shopeeProducts, 
+  tiktokProducts, 
+  cogsProducts, 
+  stockRecords, 
+  shopVouchers: propsShopVouchers,
+  shopVouchersState,
+  setShopVouchersState,
+  shopeeFeeConfigsState,
+  setShopeeFeeConfigsState
+}: PricingCalculatorProps) {
   const [activePlatform, setActivePlatform] = useState<'shopee' | 'tiktok'>('shopee');
+  const [tempFeeInputs, setTempFeeInputs] = useState<Record<string, string>>({});
 
   const activeProducts = useMemo(() => {
     return shopeeProducts;
   }, [shopeeProducts]);
 
   // Simulator fee settings states (separate for Shopee and Tiktok)
-  const [shopeeFeeConfigs, setShopeeFeeConfigs] = useState({
+  const [internalShopeeFeeConfigs, setInternalShopeeFeeConfigs] = useState({
     fixedFee: { type: 'percent', val: 17 } as FeeItem,
-    infraFee: { type: 'value', val: 3000 } as FeeItem,
+    infraFee: { type: 'value', val: 5500 } as FeeItem,
     paymentFee: { type: 'percent', val: 6.0 } as FeeItem,
     voucherXtra: { type: 'percent', val: 5.0 } as FeeItem,
     voucherXtraCap: 50000,
@@ -58,9 +73,15 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
     ffmFee: { type: 'percent', val: 5.0 } as FeeItem,
     returnFee: { type: 'percent', val: 1.0 } as FeeItem,
     platformVoucher: { type: 'percent', val: 20.0 } as FeeItem,
-    platformVoucherCap: 150005,
-    giftQuota: { type: 'percent', val: 8.0 } as FeeItem
+    platformVoucherCap: 0,
+    giftQuota: { type: 'percent', val: 8.0 } as FeeItem,
+    voucherSellerFeeActive: true,
+    voucherSellerFee: { type: 'percent', val: 2.0 } as FeeItem,
+    voucherSellerFeeCap: 50000
   });
+
+  const shopeeFeeConfigs = shopeeFeeConfigsState || internalShopeeFeeConfigs;
+  const setShopeeFeeConfigs = setShopeeFeeConfigsState || setInternalShopeeFeeConfigs;
 
   const [tiktokFeeConfigs, setTiktokFeeConfigs] = useState({
     fixedFee: { type: 'percent', val: 14.7 } as FeeItem,
@@ -218,7 +239,7 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
   }, []);
 
   // Shop vouchers managed state (min spend condition & cap reduction & priorities order)
-  const [shopVouchers, setShopVouchers] = useState<ShopVoucher[]>(() => {
+  const [internalShopVouchers, setInternalShopVouchers] = useState<ShopVoucher[]>(() => {
     if (propsShopVouchers && propsShopVouchers.length > 0) {
       return propsShopVouchers;
     }
@@ -230,11 +251,14 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
     ];
   });
 
+  const shopVouchers = shopVouchersState || internalShopVouchers;
+  const setShopVouchers = setShopVouchersState || setInternalShopVouchers;
+
   useEffect(() => {
-    if (propsShopVouchers && propsShopVouchers.length > 0) {
+    if (propsShopVouchers && propsShopVouchers.length > 0 && !shopVouchersState) {
       setShopVouchers(propsShopVouchers);
     }
-  }, [propsShopVouchers]);
+  }, [propsShopVouchers, shopVouchersState]);
 
   const addShopVoucher = () => {
     const nextPriority = shopVouchers.length > 0 ? Math.max(...shopVouchers.map(v => v.priority)) + 1 : 1;
@@ -320,9 +344,12 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
     return "https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=500";
   };
 
-  // Safe percentage helper
+  // Safe percentage helper allowing decimals and comma-to-dot replacement
   const cleanPct = (val: string) => {
-    const num = parseFloat(val);
+    const cleaned = val.replace(/,/g, '.').replace(/[^0-9.]/g, '');
+    const parts = cleaned.split('.');
+    const withSingleDot = parts[0] + (parts.length > 1 ? '.' + parts.slice(1).join('') : '');
+    const num = parseFloat(withSingleDot);
     return isNaN(num) ? 0 : Math.max(0, Math.min(100, num));
   };
 
@@ -330,6 +357,146 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
   const cleanInt = (val: string) => {
     const num = parseInt(val.replace(/[^0-9]/g, ''));
     return isNaN(num) ? 0 : Math.max(0, num);
+  };
+
+  // Helper formatter for rendering integer numeric input with thousands dots
+  const formatInputWithDots = (valStr: string) => {
+    const digits = valStr.replace(/[^0-9]/g, '');
+    if (!digits) return '';
+    const num = parseInt(digits, 10);
+    return isNaN(num) ? '' : num.toLocaleString('vi-VN');
+  };
+
+  // Helper formatter for rendering decimal percentage inputs
+  const formatInputPercentage = (valStr: string) => {
+    let sanitized = valStr.replace(/,/g, '.').replace(/[^0-9.]/g, '');
+    const parts = sanitized.split('.');
+    if (parts.length > 2) {
+      sanitized = parts[0] + '.' + parts.slice(1).join('');
+    }
+    return sanitized;
+  };
+
+  // Render a managed fee config input with support for active editing and formatting
+  const renderConfigInput = (
+    label: string,
+    configKey: string,
+    feeItem: FeeItem,
+    onChangeType: (type: 'percent' | 'value') => void,
+    onChangeVal: (val: number) => void
+  ) => {
+    const isPercent = feeItem.type === 'percent';
+    const tempVal = tempFeeInputs[configKey];
+    const displayVal = tempVal !== undefined
+      ? tempVal
+      : (isPercent ? feeItem.val.toString() : feeItem.val.toLocaleString('vi-VN'));
+
+    return (
+      <div key={configKey}>
+        <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-normal">
+          {label}
+        </label>
+        <div className="mt-1.5 flex bg-slate-800 border border-slate-700/60 rounded-xl p-0.5 items-center justify-between">
+          <input
+            type="text"
+            value={displayVal}
+            onChange={(e) => {
+              const valStr = e.target.value;
+              const formatted = isPercent ? formatInputPercentage(valStr) : formatInputWithDots(valStr);
+              setTempFeeInputs(prev => ({ ...prev, [configKey]: formatted }));
+              const parsedVal = isPercent ? cleanPct(formatted) : cleanInt(formatted);
+              onChangeVal(parsedVal);
+            }}
+            onBlur={() => {
+              setTempFeeInputs(prev => {
+                const next = { ...prev };
+                delete next[configKey];
+                return next;
+              });
+            }}
+            className="bg-transparent text-sm w-full py-1.5 px-3 text-white focus:outline-none font-mono font-bold"
+          />
+          <div className="flex rounded-lg bg-slate-950 border border-slate-850 p-0.5 shrink-0 select-none mr-1">
+            <button
+              type="button"
+              onClick={() => {
+                const updatedVal = Math.min(100, feeItem.val);
+                onChangeType('percent');
+                onChangeVal(updatedVal);
+                setTempFeeInputs(prev => {
+                  const next = { ...prev };
+                  delete next[configKey];
+                  return next;
+                });
+              }}
+              className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${
+                isPercent ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              %
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChangeType('value');
+                setTempFeeInputs(prev => {
+                  const next = { ...prev };
+                  delete next[configKey];
+                  return next;
+                });
+              }}
+              className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${
+                !isPercent ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              đ
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderFlatValueInput = (
+    label: string,
+    configKey: string,
+    currentValue: number,
+    onChangeVal: (val: number) => void
+  ) => {
+    const tempVal = tempFeeInputs[configKey];
+    const displayVal = tempVal !== undefined
+      ? tempVal
+      : currentValue.toLocaleString('vi-VN');
+
+    return (
+      <div key={configKey}>
+        <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wide leading-normal">
+          {label}
+        </label>
+        <div className="mt-1.5 relative rounded-xl shadow-3xs">
+          <input
+            type="text"
+            value={displayVal}
+            onChange={(e) => {
+              const valStr = e.target.value;
+              const formatted = formatInputWithDots(valStr);
+              setTempFeeInputs(prev => ({ ...prev, [configKey]: formatted }));
+              const parsedVal = cleanInt(formatted);
+              onChangeVal(parsedVal);
+            }}
+            onBlur={() => {
+              setTempFeeInputs(prev => {
+                const next = { ...prev };
+                delete next[configKey];
+                return next;
+              });
+            }}
+            className="bg-slate-800 border border-slate-700/60 rounded-xl text-sm w-full py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-indigo-550 font-mono font-bold text-right"
+          />
+          <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-500 text-xs font-bold font-mono">đ</div>
+        </div>
+      </div>
+    );
   };
 
   // Helper to compute a fee value which can be either a percentage of base price or a flat value
@@ -460,6 +627,11 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
       // 11. Voucher X-tra capped
       const voucherXtra = calculateValue(feeConfigs.voucherXtra, basePrice, feeConfigs.voucherXtraCap);
 
+      // 11b. Phí sử dụng Voucher Người bán (optional 2% capped at 50,000)
+      const voucherSellerFee = (activePlatform === 'shopee' && feeConfigs.voucherSellerFeeActive)
+        ? calculateValue(feeConfigs.voucherSellerFee, basePrice, feeConfigs.voucherSellerFeeCap)
+        : 0;
+
       // 12. Sàn Commission
       // For TikTok Shop, commission is calculated over the price customer pays after all vouchers (vouchers shop and voucher sàn)
       const commissionBase = activePlatform === 'tiktok' ? Math.max(0, basePrice - shopVoucher - platformVoucherCost) : basePrice;
@@ -477,7 +649,7 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
       // 16. Total Platform and operating fees (excluding Gift)
       const totalFees = activePlatform === 'tiktok'
         ? fixedFee + paymentFee + infraFee + voucherXtra + cfFee + commission + ffmFee
-        : fixedFee + infraFee + paymentFee + voucherXtra + commission + ffmFee + returnFee;
+        : fixedFee + infraFee + paymentFee + voucherXtra + voucherSellerFee + commission + ffmFee + returnFee;
 
       // 17. GM, %GM, Net Sale, %NM formulas based on platform
       let gm = 0;
@@ -531,6 +703,7 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
         infraFee,
         paymentFee,
         voucherXtra,
+        voucherSellerFee,
         commission,
         cfFee,
         ffmFee,
@@ -928,335 +1101,198 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
               Cơ Chế Thu Thuế Phí Linh Hoạt % / đ cố định
             </div>
             <h3 className="text-sm font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-2 border-b border-slate-800 pb-3">
-              <Settings size={15} /> THAY ĐỔI CÁC ĐẦU MỤC PHÍ SÀN (NHẬP LINH HOẠT % HOẶC GIÁ TIỀN)
+              <Settings size={15} /> THAY ĐỔI CÁC ĐẦU MỤC PHÍ CHI TIẾT
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-4 mt-5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
               {activePlatform === 'shopee' ? (
                 <>
-                  {/* Phí cố định */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest">Phí cố định sàn</label>
-                    <div className="mt-1.5 flex bg-slate-800 border border-slate-700/60 rounded-xl p-0.5 items-center justify-between">
+                  {renderConfigInput(
+                    'Phí cố định sàn',
+                    'fixedFee',
+                    feeConfigs.fixedFee,
+                    (t) => setFeeConfigs({ ...feeConfigs, fixedFee: { ...feeConfigs.fixedFee, type: t } }),
+                    (v) => setFeeConfigs({ ...feeConfigs, fixedFee: { ...feeConfigs.fixedFee, val: v } })
+                  )}
+
+                  {renderConfigInput(
+                    'Phí cổng thanh toán sàn',
+                    'paymentFee',
+                    feeConfigs.paymentFee,
+                    (t) => setFeeConfigs({ ...feeConfigs, paymentFee: { ...feeConfigs.paymentFee, type: t } }),
+                    (v) => setFeeConfigs({ ...feeConfigs, paymentFee: { ...feeConfigs.paymentFee, val: v } })
+                  )}
+
+                  {renderConfigInput(
+                    'Gói dịch vụ Voucher X-tra',
+                    'voucherXtra',
+                    feeConfigs.voucherXtra,
+                    (t) => setFeeConfigs({ ...feeConfigs, voucherXtra: { ...feeConfigs.voucherXtra, type: t } }),
+                    (v) => setFeeConfigs({ ...feeConfigs, voucherXtra: { ...feeConfigs.voucherXtra, val: v } })
+                  )}
+
+                  {renderFlatValueInput(
+                    'Trần Voucher X-tra Capped',
+                    'voucherXtraCap',
+                    feeConfigs.voucherXtraCap,
+                    (v) => setFeeConfigs({ ...feeConfigs, voucherXtraCap: v })
+                  )}
+
+                  {/* Phí sử dụng Voucher */}
+                  <div className="bg-slate-800/40 border border-indigo-500/20 rounded-2xl p-3 flex flex-col justify-between space-y-2">
+                    <div className="flex items-center justify-between gap-1 border-b border-slate-800 pb-1.5">
+                      <label className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider block leading-snug cursor-pointer select-none" htmlFor="shopee_use_voucher_seller">
+                        Phí Voucher 2%
+                      </label>
                       <input 
-                        type="text" 
-                        value={feeConfigs.fixedFee.val.toLocaleString('vi-VN')}
-                        onChange={(e) => {
-                          const raw = cleanInt(e.target.value);
-                          const finalVal = feeConfigs.fixedFee.type === 'percent' ? Math.min(100, raw) : raw;
-                          setFeeConfigs({ ...feeConfigs, fixedFee: { ...feeConfigs.fixedFee, val: finalVal } });
-                        }}
-                        className="bg-transparent text-sm w-full py-1.5 px-3 text-white focus:outline-none font-mono font-bold"
+                        id="shopee_use_voucher_seller"
+                        type="checkbox"
+                        checked={feeConfigs.voucherSellerFeeActive || false}
+                        onChange={(e) => setFeeConfigs({ ...feeConfigs, voucherSellerFeeActive: e.target.checked })}
+                        className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 rounded border-slate-600 cursor-pointer accent-indigo-500 shrink-0"
                       />
-                      <div className="flex rounded-lg bg-slate-950 border border-slate-850 p-0.5 shrink-0 select-none mr-1">
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, fixedFee: { ...feeConfigs.fixedFee, type: 'percent', val: Math.min(100, feeConfigs.fixedFee.val) } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.fixedFee.type === 'percent' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          %
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, fixedFee: { ...feeConfigs.fixedFee, type: 'value' } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.fixedFee.type === 'value' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          đ
-                        </button>
+                    </div>
+                    
+                    <div className="space-y-1.5">
+                      <div className="flex bg-slate-900/60 border border-slate-700/60 rounded-xl p-0.5 items-center justify-between">
+                        <input 
+                          type="text"
+                          disabled={!feeConfigs.voucherSellerFeeActive}
+                          value={tempFeeInputs['voucherSellerFee'] !== undefined ? tempFeeInputs['voucherSellerFee'] : (feeConfigs.voucherSellerFee?.type === 'percent' ? feeConfigs.voucherSellerFee?.val?.toString() : feeConfigs.voucherSellerFee?.val?.toLocaleString('vi-VN'))}
+                          onChange={(e) => {
+                            const valStr = e.target.value;
+                            const isPercent = feeConfigs.voucherSellerFee?.type === 'percent';
+                            const formatted = isPercent ? formatInputPercentage(valStr) : formatInputWithDots(valStr);
+                            setTempFeeInputs(prev => ({ ...prev, voucherSellerFee: formatted }));
+                            const parsedVal = isPercent ? cleanPct(formatted) : cleanInt(formatted);
+                            setFeeConfigs({ ...feeConfigs, voucherSellerFee: { ...(feeConfigs.voucherSellerFee || { type: 'percent', val: 2.0 }), val: parsedVal } });
+                          }}
+                          onBlur={() => {
+                            setTempFeeInputs(prev => {
+                              const next = { ...prev };
+                              delete next['voucherSellerFee'];
+                              return next;
+                            });
+                          }}
+                          className={`bg-transparent text-xs w-full py-1 px-1.5 focus:outline-none font-mono font-bold ${feeConfigs.voucherSellerFeeActive ? 'text-white' : 'text-slate-500'}`}
+                        />
+                        <div className="flex rounded-lg bg-slate-950 border border-slate-850 p-0.5 shrink-0 select-none mr-1">
+                          <button
+                            type="button"
+                            disabled={!feeConfigs.voucherSellerFeeActive}
+                            onClick={() => {
+                              const updatedVal = Math.min(100, feeConfigs.voucherSellerFee?.val || 2.0);
+                              setFeeConfigs({ ...feeConfigs, voucherSellerFee: { type: 'percent', val: updatedVal } });
+                              setTempFeeInputs(prev => {
+                                const next = { ...prev };
+                                delete next['voucherSellerFee'];
+                                return next;
+                              });
+                            }}
+                            className={`px-1 rounded text-[8px] font-bold transition cursor-pointer ${
+                              feeConfigs.voucherSellerFeeActive && feeConfigs.voucherSellerFee?.type === 'percent' ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                            }`}
+                          >
+                            %
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!feeConfigs.voucherSellerFeeActive}
+                            onClick={() => {
+                              setFeeConfigs({ ...feeConfigs, voucherSellerFee: { type: 'value', val: feeConfigs.voucherSellerFee?.val || 2.0 } });
+                              setTempFeeInputs(prev => {
+                                const next = { ...prev };
+                                delete next['voucherSellerFee'];
+                                return next;
+                              });
+                            }}
+                            className={`px-1 rounded text-[8px] font-bold transition cursor-pointer ${
+                              feeConfigs.voucherSellerFeeActive && feeConfigs.voucherSellerFee?.type === 'value' ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                            }`}
+                          >
+                            đ
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="relative">
+                        <input 
+                          type="text"
+                          disabled={!feeConfigs.voucherSellerFeeActive}
+                          placeholder="Trần chi phí"
+                          value={tempFeeInputs['voucherSellerFeeCap'] !== undefined ? tempFeeInputs['voucherSellerFeeCap'] : (feeConfigs.voucherSellerFeeCap || 50000).toLocaleString('vi-VN')}
+                          onChange={(e) => {
+                            const raw = cleanInt(e.target.value);
+                            setTempFeeInputs(prev => ({ ...prev, voucherSellerFeeCap: raw.toLocaleString('vi-VN') }));
+                            setFeeConfigs({ ...feeConfigs, voucherSellerFeeCap: raw });
+                          }}
+                          onBlur={() => {
+                            setTempFeeInputs(prev => {
+                              const next = { ...prev };
+                              delete next['voucherSellerFeeCap'];
+                              return next;
+                            });
+                          }}
+                          className={`bg-slate-900/60 border border-slate-700/60 rounded-xl py-1 px-2 text-[10px] w-full focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 font-mono font-bold ${feeConfigs.voucherSellerFeeActive ? 'text-white' : 'text-slate-500'}`}
+                        />
+                        <span className="absolute inset-y-0 right-2 flex items-center pointer-events-none text-[8px] text-slate-500 font-bold font-mono">đ</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Phí Giao dịch */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest">Phí cổng thanh toán sàn</label>
-                    <div className="mt-1.5 flex bg-slate-800 border border-slate-700/60 rounded-xl p-0.5 items-center justify-between">
-                      <input 
-                        type="text" 
-                        value={feeConfigs.paymentFee.val.toLocaleString('vi-VN')}
-                        onChange={(e) => {
-                          const raw = cleanInt(e.target.value);
-                          const finalVal = feeConfigs.paymentFee.type === 'percent' ? Math.min(100, raw) : raw;
-                          setFeeConfigs({ ...feeConfigs, paymentFee: { ...feeConfigs.paymentFee, val: finalVal } });
-                        }}
-                        className="bg-transparent text-sm w-full py-1.5 px-3 text-white focus:outline-none font-mono font-bold"
-                      />
-                      <div className="flex rounded-lg bg-slate-950 border border-slate-850 p-0.5 shrink-0 select-none mr-1">
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, paymentFee: { ...feeConfigs.paymentFee, type: 'percent', val: Math.min(100, feeConfigs.paymentFee.val) } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.paymentFee.type === 'percent' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          %
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, paymentFee: { ...feeConfigs.paymentFee, type: 'value' } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.paymentFee.type === 'value' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          đ
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  {renderConfigInput(
+                    'Hoa hồng sàn liên kết (Affiliate)',
+                    'commission',
+                    feeConfigs.commission,
+                    (t) => setFeeConfigs({ ...feeConfigs, commission: { ...feeConfigs.commission, type: t } }),
+                    (v) => setFeeConfigs({ ...feeConfigs, commission: { ...feeConfigs.commission, val: v } })
+                  )}
 
-                  {/* Voucher X-tra */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest">Gói dịch vụ Voucher X-tra</label>
-                    <div className="mt-1.5 flex bg-slate-800 border border-slate-700/60 rounded-xl p-0.5 items-center justify-between">
-                      <input 
-                        type="text" 
-                        value={feeConfigs.voucherXtra.val.toLocaleString('vi-VN')}
-                        onChange={(e) => {
-                          const raw = cleanInt(e.target.value);
-                          const finalVal = feeConfigs.voucherXtra.type === 'percent' ? Math.min(100, raw) : raw;
-                          setFeeConfigs({ ...feeConfigs, voucherXtra: { ...feeConfigs.voucherXtra, val: finalVal } });
-                        }}
-                        className="bg-transparent text-sm w-full py-1.5 px-3 text-white focus:outline-none font-mono font-bold"
-                      />
-                      <div className="flex rounded-lg bg-slate-950 border border-slate-850 p-0.5 shrink-0 select-none mr-1">
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, voucherXtra: { ...feeConfigs.voucherXtra, type: 'percent', val: Math.min(100, feeConfigs.voucherXtra.val) } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.voucherXtra.type === 'percent' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          %
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, voucherXtra: { ...feeConfigs.voucherXtra, type: 'value' } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.voucherXtra.type === 'value' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          đ
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  {renderConfigInput(
+                    'Platform Voucher Trợ giá',
+                    'platformVoucher',
+                    feeConfigs.platformVoucher,
+                    (t) => setFeeConfigs({ ...feeConfigs, platformVoucher: { ...feeConfigs.platformVoucher, type: t } }),
+                    (v) => setFeeConfigs({ ...feeConfigs, platformVoucher: { ...feeConfigs.platformVoucher, val: v } })
+                  )}
 
-                  {/* Trần Voucher X-tra */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wide">Trần Voucher X-tra Capped</label>
-                    <div className="mt-1.5 relative rounded-xl shadow-3xs">
-                      <input 
-                        type="text" 
-                        value={feeConfigs.voucherXtraCap.toLocaleString('vi-VN')}
-                        onChange={(e) => setFeeConfigs({ ...feeConfigs, voucherXtraCap: cleanInt(e.target.value) })}
-                        className="bg-slate-800 border border-slate-700/60 rounded-xl text-sm w-full py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-indigo-550 font-mono font-bold text-right"
-                      />
-                      <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-500 text-xs font-bold font-mono">đ</div>
-                    </div>
-                  </div>
+                  {renderFlatValueInput(
+                    'Trần Platform Voucher',
+                    'platformVoucherCap',
+                    feeConfigs.platformVoucherCap,
+                    (v) => setFeeConfigs({ ...feeConfigs, platformVoucherCap: v })
+                  )}
 
-                  {/* Hoa hồng sàn */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest">Hoa hồng sàn liên kết (Affiliate)</label>
-                    <div className="mt-1.5 flex bg-slate-800 border border-slate-700/60 rounded-xl p-0.5 items-center justify-between">
-                      <input 
-                        type="text" 
-                        value={feeConfigs.commission.val.toLocaleString('vi-VN')}
-                        onChange={(e) => {
-                          const raw = cleanInt(e.target.value);
-                          const finalVal = feeConfigs.commission.type === 'percent' ? Math.min(100, raw) : raw;
-                          setFeeConfigs({ ...feeConfigs, commission: { ...feeConfigs.commission, val: finalVal } });
-                        }}
-                        className="bg-transparent text-sm w-full py-1.5 px-3 text-white focus:outline-none font-mono font-bold"
-                      />
-                      <div className="flex rounded-lg bg-slate-950 border border-slate-855 p-0.5 shrink-0 select-none mr-1">
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, commission: { ...feeConfigs.commission, type: 'percent', val: Math.min(100, feeConfigs.commission.val) } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.commission.type === 'percent' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          %
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, commission: { ...feeConfigs.commission, type: 'value' } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.commission.type === 'value' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          đ
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  {renderConfigInput(
+                    'Định mức Quà Tặng Quota',
+                    'giftQuota',
+                    feeConfigs.giftQuota,
+                    (t) => setFeeConfigs({ ...feeConfigs, giftQuota: { ...feeConfigs.giftQuota, type: t } }),
+                    (v) => setFeeConfigs({ ...feeConfigs, giftQuota: { ...feeConfigs.giftQuota, val: v } })
+                  )}
 
-                  {/* Platform Voucher */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest">Platform Voucher Trợ giá</label>
-                    <div className="mt-1.5 flex bg-slate-800 border border-slate-700/60 rounded-xl p-0.5 items-center justify-between">
-                      <input 
-                        type="text" 
-                        value={feeConfigs.platformVoucher.val.toLocaleString('vi-VN')}
-                        onChange={(e) => {
-                          const raw = cleanInt(e.target.value);
-                          const finalVal = feeConfigs.platformVoucher.type === 'percent' ? Math.min(100, raw) : raw;
-                          setFeeConfigs({ ...feeConfigs, platformVoucher: { ...feeConfigs.platformVoucher, val: finalVal } });
-                        }}
-                        className="bg-transparent text-sm w-full py-1.5 px-3 text-white focus:outline-none font-mono font-bold"
-                      />
-                      <div className="flex rounded-lg bg-slate-950 border border-slate-855 p-0.5 shrink-0 select-none mr-1">
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, platformVoucher: { ...feeConfigs.platformVoucher, type: 'percent', val: Math.min(100, feeConfigs.platformVoucher.val) } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.platformVoucher.type === 'percent' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          %
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, platformVoucher: { ...feeConfigs.platformVoucher, type: 'value' } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.platformVoucher.type === 'value' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          đ
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  {renderConfigInput(
+                    'Chi phí FFM kho bãi (Fulfillment)',
+                    'ffmFee',
+                    feeConfigs.ffmFee,
+                    (t) => setFeeConfigs({ ...feeConfigs, ffmFee: { ...feeConfigs.ffmFee, type: t } }),
+                    (v) => setFeeConfigs({ ...feeConfigs, ffmFee: { ...feeConfigs.ffmFee, val: v } })
+                  )}
 
-                  {/* Trần Platform Voucher */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wide">Trần Platform Voucher</label>
-                    <div className="mt-1.5 relative rounded-xl shadow-3xs">
-                      <input 
-                        type="text" 
-                        value={feeConfigs.platformVoucherCap.toLocaleString('vi-VN')}
-                        onChange={(e) => setFeeConfigs({ ...feeConfigs, platformVoucherCap: cleanInt(e.target.value) })}
-                        className="bg-slate-800 border border-slate-700/60 rounded-xl text-sm w-full py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-indigo-550 font-mono font-bold text-right"
-                      />
-                      <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-500 text-xs font-bold font-mono">đ</div>
-                    </div>
-                  </div>
+                  {renderConfigInput(
+                    'Tỉ lệ Hoàn hàng & Hao mòn rủi ro',
+                    'returnFee',
+                    feeConfigs.returnFee,
+                    (t) => setFeeConfigs({ ...feeConfigs, returnFee: { ...feeConfigs.returnFee, type: t } }),
+                    (v) => setFeeConfigs({ ...feeConfigs, returnFee: { ...feeConfigs.returnFee, val: v } })
+                  )}
 
-                  {/* Định mức quà tặng */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest">Định mức Quà Tặng Quota</label>
-                    <div className="mt-1.5 flex bg-slate-800 border border-slate-700/60 rounded-xl p-0.5 items-center justify-between">
-                      <input 
-                        type="text" 
-                        value={feeConfigs.giftQuota.val.toLocaleString('vi-VN')}
-                        onChange={(e) => {
-                          const raw = cleanInt(e.target.value);
-                          const finalVal = feeConfigs.giftQuota.type === 'percent' ? Math.min(100, raw) : raw;
-                          setFeeConfigs({ ...feeConfigs, giftQuota: { ...feeConfigs.giftQuota, val: finalVal } });
-                        }}
-                        className="bg-transparent text-sm w-full py-1.5 px-3 text-white focus:outline-none font-mono font-bold"
-                      />
-                      <div className="flex rounded-lg bg-slate-950 border border-slate-855 p-0.5 shrink-0 select-none mr-1">
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, giftQuota: { ...feeConfigs.giftQuota, type: 'percent', val: Math.min(100, feeConfigs.giftQuota.val) } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.giftQuota.type === 'percent' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          %
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, giftQuota: { ...feeConfigs.giftQuota, type: 'value' } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.giftQuota.type === 'value' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          đ
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Chi phí FFM */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest">Chi phí FFM kho bãi (Fulfillment)</label>
-                    <div className="mt-1.5 flex bg-slate-800 border border-slate-700/60 rounded-xl p-0.5 items-center justify-between">
-                      <input 
-                        type="text" 
-                        value={feeConfigs.ffmFee.val.toLocaleString('vi-VN')}
-                        onChange={(e) => {
-                          const raw = cleanInt(e.target.value);
-                          const finalVal = feeConfigs.ffmFee.type === 'percent' ? Math.min(100, raw) : raw;
-                          setFeeConfigs({ ...feeConfigs, ffmFee: { ...feeConfigs.ffmFee, val: finalVal } });
-                        }}
-                        className="bg-transparent text-sm w-full py-1.5 px-3 text-white focus:outline-none font-mono font-bold"
-                      />
-                      <div className="flex rounded-lg bg-slate-950 border border-slate-855 p-0.5 shrink-0 select-none mr-1">
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, ffmFee: { ...feeConfigs.ffmFee, type: 'percent', val: Math.min(100, feeConfigs.ffmFee.val) } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.ffmFee.type === 'percent' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          %
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, ffmFee: { ...feeConfigs.ffmFee, type: 'value' } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.ffmFee.type === 'value' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          đ
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Tỉ lệ hao mòn hoàn hàng & rủi ro */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest">Tỉ lệ Hoàn hàng & Hao mòn rủi ro</label>
-                    <div className="mt-1.5 flex bg-slate-800 border border-slate-700/60 rounded-xl p-0.5 items-center justify-between">
-                      <input 
-                        type="text" 
-                        value={feeConfigs.returnFee.val.toLocaleString('vi-VN')}
-                        onChange={(e) => {
-                          const raw = cleanInt(e.target.value);
-                          const finalVal = feeConfigs.returnFee.type === 'percent' ? Math.min(100, raw) : raw;
-                          setFeeConfigs({ ...feeConfigs, returnFee: { ...feeConfigs.returnFee, val: finalVal } });
-                        }}
-                        className="bg-transparent text-sm w-full py-1.5 px-3 text-white focus:outline-none font-mono font-bold"
-                      />
-                      <div className="flex rounded-lg bg-slate-950 border border-slate-855 p-0.5 shrink-0 select-none mr-1">
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, returnFee: { ...feeConfigs.returnFee, type: 'percent', val: Math.min(100, feeConfigs.returnFee.val) } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.returnFee.type === 'percent' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          %
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, returnFee: { ...feeConfigs.returnFee, type: 'value' } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.returnFee.type === 'value' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          đ
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Hạ tầng vận hành đơn hàng */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest">Hạ tầng vận hành đơn hàng</label>
-                    <div className="mt-1.5 flex bg-slate-800 border border-slate-700/60 rounded-xl p-0.5 items-center justify-between">
-                      <input 
-                        type="text" 
-                        value={feeConfigs.infraFee.val.toLocaleString('vi-VN')}
-                        onChange={(e) => {
-                          const raw = cleanInt(e.target.value);
-                          const finalVal = feeConfigs.infraFee.type === 'percent' ? Math.min(100, raw) : raw;
-                          setFeeConfigs({ ...feeConfigs, infraFee: { ...feeConfigs.infraFee, val: finalVal } });
-                        }}
-                        className="bg-transparent text-sm w-full py-1.5 px-3 text-white focus:outline-none font-mono font-bold"
-                      />
-                      <div className="flex rounded-lg bg-slate-950 border border-slate-855 p-0.5 shrink-0 select-none mr-1">
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, infraFee: { ...feeConfigs.infraFee, type: 'percent', val: Math.min(100, feeConfigs.infraFee.val) } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.infraFee.type === 'percent' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          %
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setFeeConfigs({ ...feeConfigs, infraFee: { ...feeConfigs.infraFee, type: 'value' } })}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition cursor-pointer ${feeConfigs.infraFee.type === 'value' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                        >
-                          đ
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  {renderConfigInput(
+                    'Hạ tầng vận hành đơn hàng',
+                    'infraFee',
+                    feeConfigs.infraFee,
+                    (t) => setFeeConfigs({ ...feeConfigs, infraFee: { ...feeConfigs.infraFee, type: t } }),
+                    (v) => setFeeConfigs({ ...feeConfigs, infraFee: { ...feeConfigs.infraFee, val: v } })
+                  )}
                 </>
               ) : (
                 <>
@@ -1580,7 +1616,7 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                     if (activePlatform === 'shopee') {
                       setFeeConfigs({
                         fixedFee: { type: 'percent', val: 17 },
-                        infraFee: { type: 'value', val: 3000 },
+                        infraFee: { type: 'value', val: 5500 },
                         paymentFee: { type: 'percent', val: 6.0 },
                         voucherXtra: { type: 'percent', val: 5.0 },
                         voucherXtraCap: 50000,
@@ -1589,8 +1625,11 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                         ffmFee: { type: 'percent', val: 5.0 },
                         returnFee: { type: 'percent', val: 1.0 },
                         platformVoucher: { type: 'percent', val: 20.0 },
-                        platformVoucherCap: 150000,
-                        giftQuota: { type: 'percent', val: 8.0 }
+                        platformVoucherCap: 0,
+                        giftQuota: { type: 'percent', val: 8.0 },
+                        voucherSellerFeeActive: true,
+                        voucherSellerFee: { type: 'percent', val: 2.0 },
+                        voucherSellerFeeCap: 50000
                       });
                     } else {
                       setFeeConfigs({
@@ -1997,6 +2036,16 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                        <div className="flex justify-between items-center font-bold text-slate-800">
                          <span className="text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded text-[10px] font-mono">
                            {activeLineMetrics.appliedVoucherCode}
+                          </span>
+                          {(() => {
+                            const appliedVObj = shopVouchers.find(v => v.id === activeLineMetrics.appliedVoucherId || v.code === activeLineMetrics.appliedVoucherCode);
+                            return appliedVObj?.voucherType ? (
+                              <span className="text-purple-700 bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded text-[9px] font-bold font-sans">
+                                Type: {appliedVObj.voucherType}
+                              </span>
+                            ) : null;
+                          })()}
+                          <span className="hidden">
                          </span>
                          <span className="text-emerald-600 font-mono font-extrabold">-{formatVND(activeLineMetrics.shopVoucher)}</span>
                        </div>
@@ -2031,7 +2080,7 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                        const suffix = v.type === 'percent' ? `${v.val}% (Capped ${formatVND(v.capVal)})` : formatVND(v.val);
                        return (
                          <option key={v.id} value={v.id} disabled={!v.active}>
-                           {v.code} ({suffix}) - Min: {formatVND(v.minSpent)} {(!v.active) ? '[TẮT]' : ''}
+                           {v.code}{v.voucherType ? ` [${v.voucherType}]` : ''} ({suffix}) - Min: {formatVND(v.minSpent)} {(!v.active) ? '[TẮT]' : ''}
                          </option>
                        );
                      })}
@@ -2317,6 +2366,7 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                           activeLineMetrics.commission + 
                           activeLineMetrics.ffmFee + 
                           activeLineMetrics.voucherXtra +
+                          (activeLineMetrics.voucherSellerFee || 0) +
                           activeLineMetrics.returnFee +
                           activeLineMetrics.cfFee
                         )}
@@ -2333,6 +2383,7 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                             activeLineMetrics.commission + 
                             activeLineMetrics.ffmFee + 
                             activeLineMetrics.voucherXtra +
+                            (activeLineMetrics.voucherSellerFee || 0) +
                             activeLineMetrics.returnFee +
                             activeLineMetrics.cfFee
                           ) / activeLineMetrics.basePrice) * 100)}%` 
@@ -2431,6 +2482,14 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                           <td className="py-1.5 px-3.5 font-sans text-slate-500">Gói dịch vụ Voucher Xtra sàn</td>
                           <td className="py-1.5 px-2 text-slate-400 text-[10px] text-right font-sans">{formatFeeConfigLabel(feeConfigs.voucherXtra)} (Trần {formatVND(feeConfigs.voucherXtraCap)})</td>
                           <td className="py-1.5 px-3.5 text-slate-700 text-right">-{formatVND(activeLineMetrics.voucherXtra)}</td>
+                        </tr>
+                      )}
+                      {/* Row 7b: Phí sử dụng Voucher Người bán */}
+                      {activePlatform === 'shopee' && activeLineMetrics.voucherSellerFee > 0 && (
+                        <tr className="border-b border-slate-150/50 hover:bg-slate-100/30 font-semibold text-indigo-755 bg-indigo-50/15">
+                          <td className="py-1.5 px-3.5 font-sans">Phí sử dụng Voucher Người bán</td>
+                          <td className="py-1.5 px-2 text-indigo-400 text-[10px] text-right font-sans">{formatFeeConfigLabel(feeConfigs.voucherSellerFee)} (Trần {formatVND(feeConfigs.voucherSellerFeeCap)})</td>
+                          <td className="py-1.5 px-3.5 text-slate-700 text-right">-{formatVND(activeLineMetrics.voucherSellerFee)}</td>
                         </tr>
                       )}
                       {/* Row 8: Commission */}
@@ -2662,7 +2721,12 @@ export default function PricingCalculator({ shopeeProducts, tiktokProducts, cogs
                        {line.voucherMode === 'auto' ? (
                          <div className="text-right">
                            <span className="inline-block text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-150 rounded px-1.5 py-0.5 font-bold font-mono">
-                             AUTO: {line.appliedVoucherCode || "Không có"}
+                             AUTO: {(() => {
+                                const vObj = shopVouchers.find(v => v.id === line.appliedVoucherId || v.code === line.appliedVoucherCode);
+                                return line.appliedVoucherCode 
+                                  ? `${line.appliedVoucherCode}${vObj?.voucherType ? ` [${vObj.voucherType}]` : ''}` 
+                                  : "Không có";
+                              })()}
                            </span>
                            <div className="text-[10px] font-black font-mono text-emerald-600 mt-1">
                              -{formatVND(line.shopVoucher)}

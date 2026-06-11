@@ -6,6 +6,7 @@ import AIConsultant from './components/AIConsultant';
 import PricingCalculator from './components/PricingCalculator';
 import SheetImporter from './components/SheetImporter';
 import LockScreen from './components/LockScreen';
+import MainBulkPricing from './components/MainBulkPricing';
 import { 
   LayoutDashboard, Brain, Calculator, Sparkles, 
   HelpCircle, RefreshCw, Layers, GraduationCap, Gift, ChevronRight, FileSpreadsheet,
@@ -18,7 +19,7 @@ declare global {
   }
 }
 
-type NavTab = 'dashboard' | 'pricing' | 'gmdaily' | 'advisor' | 'sheet-importer';
+type NavTab = 'dashboard' | 'pricing' | 'bulk-pricing' | 'gmdaily' | 'advisor' | 'sheet-importer';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -33,6 +34,23 @@ export default function App() {
   const [cogsProducts, setCogsProducts] = useState<CogsProduct[]>([]);
   const [stockRecords, setStockRecords] = useState<StockRecord[]>([]);
   const [shopVouchers, setShopVouchers] = useState<ShopVoucher[]>([]);
+  const [shopeeFeeConfigs, setShopeeFeeConfigs] = useState({
+    fixedFee: { type: 'percent', val: 17 },
+    infraFee: { type: 'value', val: 5500 },
+    paymentFee: { type: 'percent', val: 6.0 },
+    voucherXtra: { type: 'percent', val: 5.0 },
+    voucherXtraCap: 50000,
+    cfFee: { type: 'percent', val: 0.0 },
+    commission: { type: 'percent', val: 15.0 },
+    ffmFee: { type: 'percent', val: 5.0 },
+    returnFee: { type: 'percent', val: 1.0 },
+    platformVoucher: { type: 'percent', val: 20.0 },
+    platformVoucherCap: 0,
+    giftQuota: { type: 'percent', val: 8.0 },
+    voucherSellerFeeActive: true,
+    voucherSellerFee: { type: 'percent', val: 2.0 },
+    voucherSellerFeeCap: 50000
+  });
   const [gmDailyData, setGMDailyData] = useState<GMDailyData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sheetSource, setSheetSource] = useState<string>('live_google_sheet');
@@ -246,6 +264,18 @@ export default function App() {
               </button>
 
               <button
+                onClick={() => setActiveTab('bulk-pricing')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold uppercase transition-all duration-150 cursor-pointer ${
+                  activeTab === 'bulk-pricing'
+                    ? 'bg-indigo-600 text-white shadow-xs border border-indigo-700/10'
+                    : 'bg-white border border-slate-200/50 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Gift size={13} />
+                <span>Tính Giá Toàn Bộ Main</span>
+              </button>
+
+              <button
                 id="tab-btn-gmdaily"
                 onClick={() => setActiveTab('gmdaily')}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold uppercase transition-all duration-150 cursor-pointer ${
@@ -321,6 +351,22 @@ export default function App() {
                   cogsProducts={cogsProducts} 
                   stockRecords={stockRecords}
                   shopVouchers={shopVouchers}
+                  shopVouchersState={shopVouchers}
+                  setShopVouchersState={setShopVouchers}
+                  shopeeFeeConfigsState={shopeeFeeConfigs}
+                  setShopeeFeeConfigsState={setShopeeFeeConfigs}
+                />
+              )}
+
+              {activeTab === 'bulk-pricing' && (
+                <MainBulkPricing 
+                  shopeeProducts={mainProducts} 
+                  cogsProducts={cogsProducts} 
+                  stockRecords={stockRecords}
+                  shopVouchersState={shopVouchers}
+                  setShopVouchersState={setShopVouchers}
+                  shopeeFeeConfigsState={shopeeFeeConfigs}
+                  setShopeeFeeConfigsState={setShopeeFeeConfigs}
                 />
               )}
 

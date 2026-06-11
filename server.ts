@@ -358,6 +358,13 @@ function parseVoucherShopSheet(rows: any[][]) {
       valResult = capVal;
     }
 
+    const vType = String(row[idxVoucherType] || "Always On").trim();
+    const vTypeLower = vType.toLowerCase();
+    const isActive = vTypeLower === 'always on' || 
+                     vTypeLower === 'apply new product' || 
+                     vTypeLower.includes('always on') || 
+                     vTypeLower.includes('apply new product');
+
     vouchers.push({
       id: `sv-live-${r}`,
       code: voucherScheme, // e.g. "VC 15K, MBS 199K"
@@ -366,8 +373,8 @@ function parseVoucherShopSheet(rows: any[][]) {
       minSpent: mbsVal,
       capVal: capVal || valResult,
       priority: r,
-      active: true,
-      voucherType: String(row[idxVoucherType] || "Always On").trim(),
+      active: isActive,
+      voucherType: vType,
       platform: platform
     });
   }
