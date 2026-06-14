@@ -15,7 +15,7 @@ interface SelectedGiftItem {
 
 // State structure for each main product's detailed simulated setup
 interface BulkSimLine {
-  selectedPriceType: 'rsp' | 'minPrice' | 'kolPrice' | 'spike' | 'miniSpike' | 'bau' | 'custom';
+  selectedPriceType: 'rsp' | 'minPrice' | 'kolPrice' | 'spike' | 'miniSpike' | 'bau' | 'custom' | 'backupSpike' | 'backupMiniSpike' | 'backupBau' | 'huntingSpike' | 'huntingMiniSpike';
   customPrice: number;
   userVoucherPct: number;
   userVoucherType: 'percent' | 'value';
@@ -45,6 +45,25 @@ export default function MainBulkPricing({
   setShopeeFeeConfigsState
 }: MainBulkPricingProps) {
   
+  // Helper to format campaign labels nicely
+  const getCampaignLabel = (type: string) => {
+    switch (type) {
+      case 'bau': return 'BAU';
+      case 'miniSpike': return 'MINISPIKE';
+      case 'spike': return 'SPIKE';
+      case 'backupSpike': return 'BACKUP SPIKE';
+      case 'backupMiniSpike': return 'BACKUP MINISPIKE';
+      case 'backupBau': return 'BACKUP BAU';
+      case 'kolPrice': return 'KOL LIVE';
+      case 'huntingSpike': return 'HUNTING SPIKE';
+      case 'huntingMiniSpike': return 'HUNTING MINISPIKE';
+      case 'minPrice': return 'MINPRICE';
+      case 'rsp': return 'RSP';
+      case 'custom': return 'Tùy chỉnh';
+      default: return type.toUpperCase();
+    }
+  };
+
   // Local active product selection
   const [selectedVpCode, setSelectedVpCode] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -212,6 +231,16 @@ export default function MainBulkPricing({
         basePrice = p.miniSpike;
       } else if (line.selectedPriceType === 'bau') {
         basePrice = p.bau;
+      } else if (line.selectedPriceType === 'backupSpike') {
+        basePrice = p.spike;
+      } else if (line.selectedPriceType === 'backupMiniSpike') {
+        basePrice = p.miniSpike;
+      } else if (line.selectedPriceType === 'backupBau') {
+        basePrice = p.bau;
+      } else if (line.selectedPriceType === 'huntingSpike') {
+        basePrice = p.spike;
+      } else if (line.selectedPriceType === 'huntingMiniSpike') {
+        basePrice = p.miniSpike;
       }
 
       // 1. Voucher Shop computing
@@ -398,6 +427,16 @@ export default function MainBulkPricing({
         targetPrice = prod.miniSpike;
       } else if (type === 'bau') {
         targetPrice = prod.bau;
+      } else if (type === 'backupSpike') {
+        targetPrice = prod.spike;
+      } else if (type === 'backupMiniSpike') {
+        targetPrice = prod.miniSpike;
+      } else if (type === 'backupBau') {
+        targetPrice = prod.bau;
+      } else if (type === 'huntingSpike') {
+        targetPrice = prod.spike;
+      } else if (type === 'huntingMiniSpike') {
+        targetPrice = prod.miniSpike;
       }
 
       return {
@@ -408,6 +447,60 @@ export default function MainBulkPricing({
           customPrice: targetPrice
         }
       };
+    });
+  };
+
+  // Handle global campaign type change for all products
+  const handleGlobalPriceTypeChange = (type: any) => {
+    setBulkCache(prev => {
+      const updated = { ...prev };
+      shopeeProducts.forEach(prod => {
+        const vpCode = prod.vpCode;
+        const entry = updated[vpCode] || {
+          selectedPriceType: 'minPrice',
+          customPrice: prod.minPrice,
+          userVoucherPct: 0,
+          userVoucherType: 'percent',
+          userVoucherVal: 0,
+          selectedGifts: [],
+          voucherMode: 'auto',
+          selectedVoucherId: '',
+        };
+
+        let targetPrice = prod.minPrice;
+        if (type === 'custom') {
+          targetPrice = entry.customPrice || prod.minPrice;
+        } else if (type === 'rsp') {
+          targetPrice = prod.rsp;
+        } else if (type === 'minPrice') {
+          targetPrice = prod.minPrice;
+        } else if (type === 'kolPrice') {
+          targetPrice = prod.kolPrice;
+        } else if (type === 'spike') {
+          targetPrice = prod.spike;
+        } else if (type === 'miniSpike') {
+          targetPrice = prod.miniSpike;
+        } else if (type === 'bau') {
+          targetPrice = prod.bau;
+        } else if (type === 'backupSpike') {
+          targetPrice = prod.spike;
+        } else if (type === 'backupMiniSpike') {
+          targetPrice = prod.miniSpike;
+        } else if (type === 'backupBau') {
+          targetPrice = prod.bau;
+        } else if (type === 'huntingSpike') {
+          targetPrice = prod.spike;
+        } else if (type === 'huntingMiniSpike') {
+          targetPrice = prod.miniSpike;
+        }
+
+        updated[vpCode] = {
+          ...entry,
+          selectedPriceType: type,
+          customPrice: targetPrice
+        };
+      });
+      return updated;
     });
   };
 
@@ -585,7 +678,6 @@ export default function MainBulkPricing({
 
     const headers = [
       'Mã VP (VP Code)', 
-      'Barcode', 
       'Tên Sản Phẩm', 
       'Loại dòng', 
       'Giá Bán Thấp Nhất (Base Price)', 
@@ -613,8 +705,7 @@ export default function MainBulkPricing({
       // 1. Main Product row
       dataRows.push([
         row.product.vpCode || "",
-        row.product.barcode || "",
-        row.product.productName,
+        row.product.name || "",
         'Sản phẩm chính',
         row.basePrice,
         row.appliedVoucherCode || "Không áp dụng",
@@ -639,7 +730,6 @@ export default function MainBulkPricing({
       (row.simConfig.selectedGifts || []).forEach(gift => {
         dataRows.push([
           gift.product.skuPhanLoai || "",
-          gift.product.barcode || "",
           `  --> TẶNG KÈM: ${gift.product.name} (SL: ${gift.quantity})`,
           'Quà tặng',
           0,
@@ -1151,38 +1241,71 @@ export default function MainBulkPricing({
             </div>
           </div>
 
-          {/* Quick margin status filters */}
-          <div className="flex flex-wrap gap-1.5 pb-2 border-b border-slate-50 text-[10px] font-bold">
-            <button
-              onClick={() => setMarginFilter('all')}
-              className={`px-3 py-1.5 rounded-xl cursor-pointer border transition ${marginFilter === 'all' ? 'bg-indigo-600 border-indigo-700 text-white shadow-xs' : 'bg-slate-50 border-slate-200 text-slate-650 hover:bg-slate-100'}`}
-            >
-              Tất cả ({calculatedRows.length})
-            </button>
-            <button
-              onClick={() => setMarginFilter('profitable')}
-              className={`px-3 py-1.5 rounded-xl cursor-pointer border transition ${marginFilter === 'profitable' ? 'bg-emerald-600 border-emerald-700 text-white shadow-xs' : 'bg-slate-50 border-emerald-250 text-emerald-700 hover:bg-emerald-50'}`}
-            >
-              Đạt Biên (%NM ≥ 10%) ({calculatedRows.filter(r => r.percentageNM >= 10).length})
-            </button>
-            <button
-              onClick={() => setMarginFilter('marginal')}
-              className={`px-3 py-1.5 rounded-xl cursor-pointer border transition ${marginFilter === 'marginal' ? 'bg-amber-500 border-amber-600 text-white shadow-xs' : 'bg-slate-50 border-amber-250 text-amber-700 hover:bg-amber-50'}`}
-            >
-              Cận biên (0% - 10%) ({calculatedRows.filter(r => r.percentageNM >= 0 && r.percentageNM < 10).length})
-            </button>
-            <button
-              onClick={() => setMarginFilter('unprofitable')}
-              className={`px-3 py-1.5 rounded-xl cursor-pointer border transition ${marginFilter === 'unprofitable' ? 'bg-rose-600 border-rose-700 text-white shadow-xs' : 'bg-slate-50 border-rose-250 text-rose-600 hover:bg-rose-50'}`}
-            >
-              Lỗ / Cảnh báo (&lt; 0%) ({calculatedRows.filter(r => r.percentageNM < 0).length})
-            </button>
-            <button
-              onClick={() => setMarginFilter('unconfigured')}
-              className={`px-3 py-1.5 rounded-xl cursor-pointer border transition ${marginFilter === 'unconfigured' ? 'bg-slate-600 border-slate-700 text-white shadow-xs' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
-            >
-              Chưa gán quà ({calculatedRows.filter(r => r.simConfig.selectedGifts.length === 0).length})
-            </button>
+          {/* Quick margin status filters & Global Campaign Selector */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-2.5 border-b border-slate-100 text-[10px] font-bold">
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setMarginFilter('all')}
+                className={`px-3 py-1.5 rounded-xl cursor-pointer border transition ${marginFilter === 'all' ? 'bg-indigo-600 border-indigo-700 text-white shadow-xs' : 'bg-slate-50 border-slate-200 text-slate-650 hover:bg-slate-100'}`}
+              >
+                Tất cả ({calculatedRows.length})
+              </button>
+              <button
+                onClick={() => setMarginFilter('profitable')}
+                className={`px-3 py-1.5 rounded-xl cursor-pointer border transition ${marginFilter === 'profitable' ? 'bg-emerald-600 border-emerald-700 text-white shadow-xs' : 'bg-slate-50 border-emerald-250 text-emerald-700 hover:bg-emerald-50'}`}
+              >
+                Đạt Biên (%NM ≥ 10%) ({calculatedRows.filter(r => r.percentageNM >= 10).length})
+              </button>
+              <button
+                onClick={() => setMarginFilter('marginal')}
+                className={`px-3 py-1.5 rounded-xl cursor-pointer border transition ${marginFilter === 'marginal' ? 'bg-amber-500 border-amber-600 text-white shadow-xs' : 'bg-slate-50 border-amber-250 text-amber-700 hover:bg-amber-50'}`}
+              >
+                Cận biên (0% - 10%) ({calculatedRows.filter(r => r.percentageNM >= 0 && r.percentageNM < 10).length})
+              </button>
+              <button
+                onClick={() => setMarginFilter('unprofitable')}
+                className={`px-3 py-1.5 rounded-xl cursor-pointer border transition ${marginFilter === 'unprofitable' ? 'bg-rose-600 border-rose-700 text-white shadow-xs' : 'bg-slate-50 border-rose-250 text-rose-600 hover:bg-rose-50'}`}
+              >
+                Lỗ / Cảnh báo (&lt; 0%) ({calculatedRows.filter(r => r.percentageNM < 0).length})
+              </button>
+              <button
+                onClick={() => setMarginFilter('unconfigured')}
+                className={`px-3 py-1.5 rounded-xl cursor-pointer border transition ${marginFilter === 'unconfigured' ? 'bg-slate-600 border-slate-700 text-white shadow-xs' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+              >
+                Chưa gán quà ({calculatedRows.filter(r => r.simConfig.selectedGifts.length === 0).length})
+              </button>
+            </div>
+
+            {/* Global Campaign Selector widget with special visual badge */}
+            <div className="flex items-center gap-1.5 bg-indigo-50/50 border border-indigo-100 rounded-xl px-2.5 py-1.5 text-[10px] sm:ml-auto shadow-3xs shrink-0 self-end lg:self-auto">
+              <span className="text-indigo-950 uppercase tracking-wider text-[8.5px] font-black flex items-center gap-1 shrink-0">
+                <Sparkles size={11} className="text-indigo-650 animate-pulse" />
+                ÁP DỤNG CAMPAIGN TOÀN BỘ ({shopeeProducts.length}):
+              </span>
+              <select
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleGlobalPriceTypeChange(e.target.value);
+                    e.target.value = ""; // Reset showing option
+                  }
+                }}
+                className="bg-white border border-slate-250 hover:border-slate-350 rounded-lg px-2.5 py-1 text-[10px] font-extrabold text-indigo-750 cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-600 shadow-3xs"
+                defaultValue=""
+              >
+                <option value="" disabled>--- Chọn chiến dịch ---</option>
+                <option value="bau">BAU</option>
+                <option value="miniSpike">MINISPIKE</option>
+                <option value="spike">SPIKE</option>
+                <option value="backupSpike">BACKUP SPIKE</option>
+                <option value="backupMiniSpike">BACKUP MINISPIKE</option>
+                <option value="backupBau">BACKUP BAU</option>
+                <option value="kolPrice">KOL LIVE</option>
+                <option value="huntingSpike">HUNTING SPIKE</option>
+                <option value="huntingMiniSpike">HUNTING MINISPIKE</option>
+                <option value="minPrice">MINPRICE</option>
+                <option value="rsp">RSP</option>
+              </select>
+            </div>
           </div>
 
           {/* Table container of main products */}
@@ -1260,21 +1383,22 @@ export default function MainBulkPricing({
                               <option value="bau">BAU</option>
                               <option value="miniSpike">MINISPIKE</option>
                               <option value="spike">SPIKE</option>
+                              <option value="backupSpike">BACKUP SPIKE</option>
+                              <option value="backupMiniSpike">BACKUP MINISPIKE</option>
+                              <option value="backupBau">BACKUP BAU</option>
                               <option value="kolPrice">KOL LIVE</option>
-                              {!['bau', 'miniSpike', 'spike', 'kolPrice'].includes(row.simConfig.selectedPriceType) && (
-                                <option value={row.simConfig.selectedPriceType}>
-                                  {row.simConfig.selectedPriceType === 'minPrice' ? 'MINPRICE' : 
-                                   row.simConfig.selectedPriceType === 'rsp' ? 'RSP' : 
-                                   row.simConfig.selectedPriceType === 'custom' ? 'Tùy chỉnh' : row.simConfig.selectedPriceType.toUpperCase()}
-                                </option>
-                              )}
+                              <option value="huntingSpike">HUNTING SPIKE</option>
+                              <option value="huntingMiniSpike">HUNTING MINISPIKE</option>
+                              <option value="minPrice">MINPRICE</option>
+                              <option value="rsp">RSP</option>
+                              <option value="custom">Tùy chỉnh</option>
                             </select>
                           </td>
 
                           <td className="py-3 px-3 text-right font-mono font-bold text-slate-750">
                             <p>{formatVND(row.basePrice)}</p>
                             <span className="text-[8.5px] uppercase tracking-wide px-1 rounded-sm bg-slate-100 text-slate-500 block w-fit ml-auto mt-0.5 font-bold">
-                              {row.simConfig.selectedPriceType === 'custom' ? 'Tùy chỉnh' : row.simConfig.selectedPriceType}
+                              {getCampaignLabel(row.simConfig.selectedPriceType)}
                             </span>
                           </td>
 
@@ -1916,10 +2040,15 @@ export default function MainBulkPricing({
                     <div className="grid grid-cols-2 gap-2">
                       {[
                         { key: 'minPrice', label: 'Min Price', val: activeCalculatedRow.product.minPrice },
-                        { key: 'kolPrice', label: 'KOL Price', val: activeCalculatedRow.product.kolPrice },
+                        { key: 'kolPrice', label: 'KOL Live', val: activeCalculatedRow.product.kolPrice },
                         { key: 'spike', label: 'Spike', val: activeCalculatedRow.product.spike },
                         { key: 'miniSpike', label: 'Mini Spike', val: activeCalculatedRow.product.miniSpike },
                         { key: 'bau', label: 'BAU Price', val: activeCalculatedRow.product.bau },
+                        { key: 'backupSpike', label: 'Backup Spike', val: activeCalculatedRow.product.spike },
+                        { key: 'backupMiniSpike', label: 'Backup Mini Spike', val: activeCalculatedRow.product.miniSpike },
+                        { key: 'backupBau', label: 'Backup BAU', val: activeCalculatedRow.product.bau },
+                        { key: 'huntingSpike', label: 'Hunting Spike', val: activeCalculatedRow.product.spike },
+                        { key: 'huntingMiniSpike', label: 'Hunting Mini Spike', val: activeCalculatedRow.product.miniSpike },
                         { key: 'rsp', label: 'RSP (Đề xuất)', val: activeCalculatedRow.product.rsp }
                       ].map(tier => (
                         <button
@@ -2094,18 +2223,31 @@ export default function MainBulkPricing({
                           activeCalculatedRow.simConfig.selectedGifts.map((item) => {
                             const giftStock = stockRecords.filter(s => s.skuPhanLoai === item.product.skuPhanLoai);
                             const totalStock = giftStock.reduce((sum, s) => sum + s.quantity, 0);
+                            const giftImg = getProductImage(item.product.skuPhanLoai) || item.product.img;
 
                             return (
-                              <div key={item.product.skuPhanLoai} className="flex justify-between items-center bg-slate-50 border border-slate-150 p-2.5 rounded-xl text-[10.5px] font-semibold gap-1.5">
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-slate-850 font-extrabold truncate leading-snug">{item.product.name}</p>
-                                  <p className="text-[9px] text-slate-400 font-mono mt-0.5">
-                                    COGS: <strong className="text-indigo-650">{formatVND(item.product.cogs)}</strong> | SKU: {item.product.skuPhanLoai}
-                                  </p>
-                                  <span className={`text-[8.5px] font-semibold font-mono block mt-0.5 ${totalStock > 10 ? 'text-teal-650' : totalStock > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
-                                    Kho {item.product.size || 'Inochi'}: {totalStock} chiếc
-                                  </span>
+                              <div key={item.product.skuPhanLoai} className="flex justify-between items-center bg-slate-50 border border-slate-150 p-2.5 rounded-xl text-[10.5px] font-semibold gap-1.5 animate-fade-in">
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  {/* Thumbnail */}
+                                  <div className="w-10 h-10 rounded-md overflow-hidden border border-slate-200 shrink-0 bg-white flex items-center justify-center shadow-3xs">
+                                    {giftImg ? (
+                                      <img src={giftImg} alt={item.product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                    ) : (
+                                      <Gift size={13} className="text-slate-400" />
+                                    )}
+                                  </div>
+
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-slate-850 font-extrabold truncate leading-snug">{item.product.name}</p>
+                                    <p className="text-[9px] text-slate-400 font-mono mt-0.5">
+                                      COGS: <strong className="text-indigo-650">{formatVND(item.product.cogs)}</strong> | SKU: {item.product.skuPhanLoai}
+                                    </p>
+                                    <span className={`text-[8.5px] font-semibold font-mono block mt-0.5 ${totalStock > 10 ? 'text-teal-650' : totalStock > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                                      Kho {item.product.size || 'Inochi'}: {totalStock} chiếc
+                                    </span>
+                                  </div>
                                 </div>
+
 
                                 <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-white">
                                   <button
@@ -2174,26 +2316,76 @@ export default function MainBulkPricing({
                         </select>
                       </div>
 
-                      <div className="max-h-[110px] overflow-y-auto divide-y divide-slate-100 border border-slate-150 bg-white rounded-xl">
-                        {searchedGifts.slice(0, 15).map(g => (
-                          <div key={g.skuPhanLoai} className="p-1 px-2.5 flex justify-between items-center text-[10.5px] hover:bg-slate-50/75 font-semibold gap-1">
-                            <div className="min-w-0">
-                              <p className="truncate text-slate-800 max-w-[220px]" title={g.name}>{g.name}</p>
-                              <p className="text-[8.5px] text-slate-400 font-mono">COGS: {formatVND(g.cogs)} | {g.skuPhanLoai}</p>
+                      <div className="max-h-[220px] overflow-y-auto divide-y divide-slate-100 border border-slate-150 bg-white rounded-xl shadow-inner">
+                        {searchedGifts.slice(0, 15).map(g => {
+                          const giftImg = getProductImage(g.skuPhanLoai) || g.img;
+                          const matching = stockRecords ? stockRecords.filter(s => s.skuPhanLoai === g.skuPhanLoai) : [];
+                          const totalStock = matching.reduce((sum, s) => sum + s.quantity, 0);
+                          const southStock = matching.find(s => s.warehouse === 'BMVN_HCM_BTN')?.quantity || 0;
+                          const northStock = matching.find(s => s.warehouse === 'BMVN_BN_VSIP')?.quantity || 0;
+                          const isOutOfStock = stockRecords && stockRecords.length > 0 && totalStock === 0;
+
+                          return (
+                            <div key={g.skuPhanLoai} className={`p-2 flex items-center justify-between text-[10.5px] hover:bg-slate-50/75 font-semibold gap-2 transition ${isOutOfStock ? 'opacity-60 bg-slate-50/35' : ''}`}>
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                {/* Thumbnail */}
+                                <div className="w-11 h-11 rounded-lg overflow-hidden border border-slate-200 shrink-0 bg-slate-50 flex items-center justify-center">
+                                  {giftImg ? (
+                                    <img src={giftImg} alt={g.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                  ) : (
+                                    <Gift size={15} className="text-slate-350" />
+                                  )}
+                                </div>
+                                
+                                {/* Info details */}
+                                <div className="min-w-0 flex-1 space-y-0.5">
+                                  <p className="truncate text-slate-800 font-extrabold text-[10.5px] leading-tight" title={g.name}>{g.name}</p>
+                                  <p className="text-[8.5px] text-slate-400 font-mono">
+                                    SKU: {g.skuPhanLoai} | COGS: <span className="text-rose-650 font-bold">{formatVND(g.cogs)}</span>
+                                  </p>
+                                  
+                                  {/* Stock details */}
+                                  {stockRecords && stockRecords.length > 0 && (
+                                    <div className="flex items-center gap-1 text-[8px] font-sans font-bold">
+                                      <span className={`px-1.5 py-0.2 rounded-md ${
+                                        totalStock > 10 
+                                          ? 'bg-teal-50 text-teal-650 border border-teal-100' 
+                                          : totalStock > 0 
+                                            ? 'bg-amber-50 text-amber-655 border border-amber-100' 
+                                            : 'bg-slate-100 text-slate-400 line-through'
+                                      }`}>
+                                        Tồn: {totalStock} chiếc
+                                      </span>
+                                      {totalStock > 0 && (
+                                        <span className="text-slate-405">
+                                          (Nam: {southStock} | Bắc: {northStock})
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                disabled={isOutOfStock}
+                                onClick={() => handleAddGift(g.skuPhanLoai)}
+                                className={`cursor-pointer text-[9px] uppercase font-black tracking-wider px-2.5 py-1.5 rounded-lg border transition whitespace-nowrap active:scale-95 shrink-0 ${
+                                  isOutOfStock
+                                    ? 'bg-slate-100 border-slate-250 text-slate-400 cursor-not-allowed opacity-60'
+                                    : 'bg-white hover:bg-indigo-650 border-slate-200 hover:border-indigo-700 text-slate-700 hover:text-white hover:shadow-4xs'
+                                }`}
+                              >
+                                {isOutOfStock ? 'Hết hàng' : '+ Gán Quà'}
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleAddGift(g.skuPhanLoai)}
-                              className="cursor-pointer text-[9px] bg-slate-150/70 hover:bg-indigo-600 border border-slate-200 hover:border-indigo-700 hover:text-white px-2 py-0.5 rounded font-black transition whitespace-nowrap active:scale-95"
-                            >
-                              + Gán Quà
-                            </button>
-                          </div>
-                        ))}
+                          );
+                        })}
                         {searchedGifts.length === 0 && (
                           <p className="py-5 text-center text-slate-400 text-[9px] font-semibold">Không tìm thấy quà nào</p>
                         )}
                       </div>
+
                     </div>
 
                   </div>

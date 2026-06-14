@@ -822,7 +822,6 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
 
     const headers = [
       'Campaign Type', 
-      'Barcode', 
       'VP Code', 
       'Loại', 
       'Tên Sản Phẩm', 
@@ -848,7 +847,6 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
       // 1. Main Product row
       dataRows.push([
         g.campaignType,
-        g.barcode,
         g.vpCode,
         'Main',
         g.productName,
@@ -872,7 +870,6 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
       (g.gifts || []).forEach(gift => {
         dataRows.push([
           g.campaignType,
-          gift.barcode,
           gift.vpCode,
           'Gift (Nested)',
           `  --> TẶNG: ${gift.productName} (SL: ${gift.quantity})`,
@@ -889,7 +886,6 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
       (g.customVariants || []).forEach(cv => {
         dataRows.push([
           `${g.campaignType} (Variant)`,
-          g.barcode,
           g.vpCode,
           'Variant',
           `--> BIẾN THỂ: ${g.productName} (${cv.label})`,
@@ -913,7 +909,6 @@ BAU\t8935275211672\tHIN.KGDC.NBYK\tGift\tKhay gác dụng cụ nhà bếp Yoko\t
         (cv.gifts || []).forEach(vg => {
           dataRows.push([
             `${g.campaignType} (Variant)`,
-            "",
             vg.vpCode,
             'Gift (Variant)',
             `    --> TẶNG [Biến thể]: ${vg.productName} (SL: ${vg.quantity})`,
