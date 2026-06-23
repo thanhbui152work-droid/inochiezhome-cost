@@ -204,7 +204,7 @@ function parseMainSheet(rows: any[][]) {
 
 function parseCogsSheet(rows: any[][]) {
   let idxBarcode = 0;
-  let idxMainSku = 1;
+  let idxMainSku = -1;
   let idxImg = 0;
   let idxSkuPhanLoai = -1;
   let idxName = 3;
@@ -225,11 +225,14 @@ function parseCogsSheet(rows: any[][]) {
     for (let r = 0; r < limit; r++) {
       const row = rows[r] || [];
       for (let c = 0; c < row.length; c++) {
-        const cell = String(row[c] || "").trim().toUpperCase();
+        const rawCell = String(row[c] || "").trim().toUpperCase();
+        // Replace all whitespace sequences including tabs, newlines, carriage returns with a single space
+        const cell = rawCell.replace(/[\s\r\n]+/g, " ");
+        
         if (cell === "BARCODE" || cell === "MÃ VẠCH" || cell === "MA VACH") idxBarcode = c;
-        if (cell === "MAIN SKU" || cell === "MAIN_SKU" || cell === "MASTER SKU") idxMainSku = c;
+        if (cell === "SKU MAIN" || cell === "SKU_MAIN" || cell === "MAIN SKU" || cell === "MAIN_SKU") idxMainSku = c;
+        if (cell === "MASTER SKU" || cell === "SKU PHÂN LOẠI" || cell === "SKU PHAN LOAI" || cell === "SKU_PHAN_LOAI" || cell === "MÃ VP" || cell === "MA VP" || cell === "VP CODE") idxSkuPhanLoai = c;
         if (cell === "IMG" || cell === "IMAGE" || cell === "HÌNH ẢNH" || cell === "HINH ANH" || cell.includes("LINK ẢNH") || cell.includes("LINK ANH")) idxImg = c;
-        if (cell === "SKU PHÂN LOẠI" || cell === "SKU PHAN LOAI" || cell === "SKU_PHAN_LOAI" || cell === "MÃ VP" || cell === "MA VP" || cell === "VP CODE") idxSkuPhanLoai = c;
         if (cell.includes("PRODUCT NAME") || cell === "PRODUCT NAME" || cell === "TÊN SẢN PHẨM" || cell === "TEN SAN PHAM") idxName = c;
         if (cell === "SIZE" || cell === "KÍCH THƯỚC") idxSize = c;
         if (cell === "COLOR" || cell === "MÀU SẮC" || cell === "MẦU" || cell === "MAU") idxColor = c;
@@ -246,6 +249,16 @@ function parseCogsSheet(rows: any[][]) {
     }
   }
 
+  // Fallback indices if not specifically matched by headers
+  if (idxMainSku === -1 && idxSkuPhanLoai !== -1) {
+    idxMainSku = idxSkuPhanLoai;
+  } else if (idxSkuPhanLoai === -1 && idxMainSku !== -1) {
+    idxSkuPhanLoai = idxMainSku;
+  } else if (idxMainSku === -1 && idxSkuPhanLoai === -1) {
+    idxMainSku = 1;
+    idxSkuPhanLoai = 2; // Default column C for unique sku variation
+  }
+
   const products = [];
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r];
@@ -253,7 +266,9 @@ function parseCogsSheet(rows: any[][]) {
     
     const nameValue = String(row[idxName] || "").trim();
     if (!nameValue || nameValue.toUpperCase() === "PRODUCT NAME" || nameValue.toUpperCase() === "TÊN SẢN PHẨM" || nameValue.toUpperCase() === "TEN SAN PHAM") continue;
-    if (String(row[idxMainSku] || "").toUpperCase() === "MAIN SKU" || String(row[idxMainSku] || "").toUpperCase() === "MASTER SKU") continue;
+    
+    const mainSkuStr = String(row[idxMainSku] || "").toUpperCase();
+    if (mainSkuStr === "MAIN SKU" || mainSkuStr === "MASTER SKU" || mainSkuStr === "SKU MAIN" || mainSkuStr === "SKU_MAIN") continue;
 
     const barcodeVal = String(row[idxBarcode] || "").trim();
     const mainSkuVal = String(row[idxMainSku] || "").trim();
@@ -658,13 +673,45 @@ app.get("/api/sheets-data", async (req, res) => {
     const cogsProducts = parseCogsSheet(cogsSheetRaw);
 
     let stockRecords = [];
-    if (tonKhoSheetName) {
+    if (cogsProducts && cogsProducts.length > 0) {
+      for (const p of cogsProducts) {
+        if (p.skuPhanLoai) {
+          stockRecords.push({
+            skuPhanLoai: p.skuPhanLoai,
+            warehouse: 'BMVN_BN_VSIP', // Boxme Bắc
+            quantity: typeof p.boxmeBac === 'number' && !isNaN(p.boxmeBac) ? p.boxmeBac : 0
+          });
+          stockRecords.push({
+            skuPhanLoai: p.skuPhanLoai,
+            warehouse: 'BMVN_HCM_BTN', // Boxme Nam
+            quantity: typeof p.boxmeNam === 'number' && !isNaN(p.boxmeNam) ? p.boxmeNam : 0
+          });
+
+          // Also match with barcode if it's different to ensure all client queries match correctly
+          if (p.barcode && p.barcode !== p.skuPhanLoai) {
+            stockRecords.push({
+              skuPhanLoai: p.barcode,
+              warehouse: 'BMVN_BN_VSIP', // Boxme Bắc
+              quantity: typeof p.boxmeBac === 'number' && !isNaN(p.boxmeBac) ? p.boxmeBac : 0
+            });
+            stockRecords.push({
+              skuPhanLoai: p.barcode,
+              warehouse: 'BMVN_HCM_BTN', // Boxme Nam
+              quantity: typeof p.boxmeNam === 'number' && !isNaN(p.boxmeNam) ? p.boxmeNam : 0
+            });
+          }
+        }
+      }
+      console.log(`Successfully mapped ${stockRecords.length} stock records from COGS sheet ("Boxme Bắc" and "Boxme Nam")`);
+    }
+
+    if (stockRecords.length === 0 && tonKhoSheetName) {
       try {
         const tonKhoSheetRaw = xlsx.utils.sheet_to_json<any[]>(workbook.Sheets[tonKhoSheetName], { header: 1 });
         stockRecords = parseTonKhoSheet(tonKhoSheetRaw);
-        console.log(`Parsed stock records count: ${stockRecords.length}`);
+        console.log(`Parsed stock records count from Ton Kho fallback: ${stockRecords.length}`);
       } catch (err) {
-        console.error("Error parsing Ton Kho sheet:", err);
+        console.error("Error parsing Ton Kho sheet fallback:", err);
       }
     }
 

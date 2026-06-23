@@ -127,25 +127,6 @@ export default function ProductCogsBadgeList({ product, showAll = false }: Produ
   // Compact Inline badges row representation for lists, tables, cards, etc.
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[8.5px] font-mono leading-none py-1 sm:max-w-xl">
-      {/* Master SKU */}
-      {product.mainSku && (
-        <span className="bg-slate-100 hover:bg-slate-150 text-slate-650 px-1.5 py-0.5 rounded font-extrabold border border-slate-200" title={`Master SKU: ${product.mainSku}`}>
-          MSKU: {product.mainSku}
-        </span>
-      )}
-      
-      {/* Size / Color description */}
-      {(product.size || product.color) && (
-        <span className="bg-slate-50 border border-slate-150 text-slate-605 px-1.5 py-0.5 rounded font-bold font-sans">
-          {[product.size, product.color].filter(Boolean).join(' | ')}
-        </span>
-      )}
-
-      {/* COGS (Vốn) */}
-      <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-black font-mono">
-        COGS: {formatVND(product.cogs)}
-      </span>
-
       {/* Boxme Bắc stock status */}
       <span className={`px-1.5 py-0.5 rounded font-sans font-extrabold flex items-center gap-0.5 border ${
         product.boxmeBac && product.boxmeBac > 0 ? 'bg-teal-50 text-teal-700 border-teal-150' : 'bg-rose-50 text-rose-650 border-rose-150'
@@ -165,13 +146,6 @@ export default function ProductCogsBadgeList({ product, showAll = false }: Produ
           <span className="text-[7.5px] opacity-75 font-black uppercase">({product.statusBoxmeNam})</span>
         )}
       </span>
-
-      {/* Category */}
-      {product.category && (
-        <span className="bg-slate-100/75 border border-slate-200/80 text-slate-500 px-1.5 py-0.5 rounded font-semibold font-sans">
-          {product.category}
-        </span>
-      )}
     </div>
   );
 }
