@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { MainProduct, CogsProduct, StockRecord, ShopVoucher } from '../types';
+import ProductCogsBadgeList from './ProductCogsBadgeList';
 import { 
   Calculator, Settings, Gift, HelpCircle, Info, CheckCircle, 
   PlusCircle, Trash2, ArrowRightLeft, DollarSign, Percent, AlertCircle, Sparkles, Download, Plus,
@@ -3228,6 +3229,9 @@ export default function PricingCalculator({
                         const totalStock = matching.reduce((sum, s) => sum + s.quantity, 0);
                         const isOutOfStock = stockRecords && totalStock === 0;
 
+                        // Match to cogs product records for additional parameters
+                        const cogsProductMatched = cogsProducts.find(p => p.skuPhanLoai === variant.skuPhanLoai);
+
                         return (
                           <div
                             key={vIdx}
@@ -3272,6 +3276,10 @@ export default function PricingCalculator({
                                   </>
                                 )}
                               </div>
+
+                              {cogsProductMatched && (
+                                <ProductCogsBadgeList product={cogsProductMatched} />
+                              )}
 
                               <div className="text-[10px] text-slate-400 flex flex-wrap items-center gap-2 font-medium">
                                 <span>RSP Hãng: <span className="line-through">{formatVND(variant.rsp)}</span> (0đ, không tính)</span>

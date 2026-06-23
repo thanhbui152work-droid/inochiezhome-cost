@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { MainProduct, CogsProduct, StockRecord } from '../types';
+import ProductCogsBadgeList from './ProductCogsBadgeList';
 import { 
   Search, SlidersHorizontal, Table, Grid, Info, ArrowUpRight, 
   ArrowDownRight, Check, CheckCircle2, HelpingHand, Gift, ExternalLink,
@@ -611,14 +612,23 @@ export default function Dashboard({ mainProducts, cogsProducts, isLoading, onRef
                     {filteredMainProducts.length > 0 ? (
                       filteredMainProducts.map((p, idx) => {
                         const marginBau = p.bau > 0 ? ((p.bau - (p.cogsUpdated || p.cogs)) / p.bau) * 100 : 0;
+                        const cogsProductMatched = cogsProducts.find(cp => cp.skuPhanLoai === p.vpCode || cp.barcode === p.barcode);
                         return (
                           <tr key={idx} className="hover:bg-slate-50/50 transition leading-normal">
                             <td className="py-3.5 px-4 font-semibold text-slate-900">
                               <div className="font-bold text-slate-900 leading-tight">{p.name}</div>
-                              <div className="text-xs text-slate-400 font-mono mt-1 flex items-center gap-2">
+                              <div className="text-xs text-slate-400 font-mono mt-1 flex items-center gap-2 flex-wrap mb-1">
                                 {p.barcode && <span>BC: {p.barcode}</span>}
                                 {p.vpCode && <span>VP: {p.vpCode}</span>}
+                                {cogsProductMatched && cogsProductMatched.name !== p.name && (
+                                  <span className="text-indigo-650 bg-indigo-50/65 px-1 py-0.2 rounded font-bold max-w-[150px] truncate" title={`Tên gốc: ${cogsProductMatched.name}`}>
+                                    Gốc: {cogsProductMatched.name}
+                                  </span>
+                                )}
                               </div>
+                              {cogsProductMatched && (
+                                <ProductCogsBadgeList product={cogsProductMatched} />
+                              )}
                             </td>
                             <td className="py-3.5 px-3 text-right font-mono text-slate-600">{formatVND(p.rsp)}</td>
                             <td className="py-3.5 px-3 text-right font-bold font-mono bg-rose-50/20 text-rose-700">{formatVND(p.cogsUpdated || p.cogs)}</td>

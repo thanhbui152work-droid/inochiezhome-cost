@@ -26,6 +26,10 @@ export interface CogsProduct {
   filter: string;
   rsp: number;
   cogs: number;
+  boxmeBac?: number;
+  boxmeNam?: number;
+  statusBoxmeBac?: string;
+  statusBoxmeNam?: string;
 }
 
 export interface Competitor {

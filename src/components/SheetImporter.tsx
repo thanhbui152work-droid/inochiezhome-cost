@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import { MainProduct, CogsProduct, StockRecord } from '../types';
+import ProductCogsBadgeList from './ProductCogsBadgeList';
 import { 
   Clipboard, Table, FileSpreadsheet, AlertCircle, CheckCircle, 
   Settings, HelpCircle, Info, TrendingUp, Coins, ArrowRight, 
@@ -1340,35 +1341,50 @@ Campaign Type | Barcode | VP Code | Loại (Main/Gift) | Tên sản phẩm | S�
                                   </button>
                                 </div>
 
-                                <div className="flex gap-1.5 items-center mt-1.5 text-[9px] font-mono font-bold flex-wrap">
-                                  <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 px-1.5 rounded uppercase">Main</span>
-                                  {item.campaignType && (
-                                    <span className="bg-amber-50 border border-amber-200 text-amber-800 px-1.5 rounded uppercase">
-                                      ⚡ {item.campaignType}
-                                    </span>
-                                  )}
-                                  <span className="text-slate-400 font-bold">VP: {item.vpCode || 'N/A'}</span>
-                                  {stockRecords && (
-                                    (() => {
-                                      const matching = stockRecords.filter(s => s.skuPhanLoai === item.vpCode);
-                                      const total = matching.reduce((sum, s) => sum + s.quantity, 0);
-                                      const south = matching.find(s => s.warehouse === 'BMVN_HCM_BTN')?.quantity || 0;
-                                      const north = matching.find(s => s.warehouse === 'BMVN_BN_VSIP')?.quantity || 0;
-                                      if (total > 0) {
-                                        return (
-                                          <span className="bg-teal-50 border border-teal-150 text-teal-800 px-1.5 rounded text-[8px] font-sans font-extrabold tracking-tight" title={`Miền Bắc: ${north} | Miền Nam: ${south}`}>
-                                            Tồn kho: {total} (Bắc: {north} | Nam: {south})
+                                {(() => {
+                                  const cogsProductMatched = cogsProducts.find(p => p.skuPhanLoai === item.vpCode || p.barcode === item.vpCode);
+                                  return (
+                                    <>
+                                      <div className="flex gap-1.5 items-center mt-1.5 text-[9px] font-mono font-bold flex-wrap">
+                                        <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 px-1.5 rounded uppercase font-extrabold">Main</span>
+                                        {item.campaignType && (
+                                          <span className="bg-amber-50 border border-amber-200 text-amber-800 px-1.5 rounded uppercase text-[8px]">
+                                            ⚡ {item.campaignType}
                                           </span>
-                                        );
-                                      }
-                                      return (
-                                        <span className="bg-rose-50 border border-rose-150 text-rose-700 px-1.5 rounded text-[8px] font-sans font-extrabold tracking-tight">
-                                          Hết tồn kho
-                                        </span>
-                                      );
-                                    })()
-                                  )}
-                                </div>
+                                        )}
+                                        <span className="text-slate-400 font-bold">VP: {item.vpCode || 'N/A'}</span>
+                                        {cogsProductMatched && cogsProductMatched.name !== item.productName && (
+                                          <span className="text-indigo-650 bg-indigo-50/60 px-1.5 rounded leading-none text-[8.5px] truncate max-w-[130px] font-bold" title={`Tên gốc: ${cogsProductMatched.name}`}>
+                                            Gốc: {cogsProductMatched.name}
+                                          </span>
+                                        )}
+                                        {stockRecords && (
+                                          (() => {
+                                            const matching = stockRecords.filter(s => s.skuPhanLoai === item.vpCode);
+                                            const total = matching.reduce((sum, s) => sum + s.quantity, 0);
+                                            const south = matching.find(s => s.warehouse === 'BMVN_HCM_BTN')?.quantity || 0;
+                                            const north = matching.find(s => s.warehouse === 'BMVN_BN_VSIP')?.quantity || 0;
+                                            if (total > 0) {
+                                              return (
+                                                <span className="bg-teal-55/70 border border-teal-150 text-teal-800 px-1.5 rounded text-[8px] font-sans font-extrabold tracking-tight" title={`Miền Bắc: ${north} | Miền Nam: ${south}`}>
+                                                  Tồn kho: {total} (Bắc: {north} | Nam: {south})
+                                                </span>
+                                              );
+                                            }
+                                            return (
+                                              <span className="bg-rose-50 border border-rose-150 text-rose-700 px-1.5 rounded text-[8px] font-sans font-extrabold tracking-tight">
+                                                Hết tồn
+                                              </span>
+                                            );
+                                          })()
+                                        )}
+                                      </div>
+                                      {cogsProductMatched && (
+                                        <ProductCogsBadgeList product={cogsProductMatched} />
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </td>

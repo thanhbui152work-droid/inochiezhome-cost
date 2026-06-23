@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import { MainProduct, CogsProduct, StockRecord, ShopVoucher } from '../types';
+import ProductCogsBadgeList from './ProductCogsBadgeList';
 import { 
   Calculator, Settings, Gift, Eye, Search, Sparkles, Filter, ChevronDown, ChevronUp, 
   Plus, Minus, Trash2, Percent, DollarSign, CornerDownRight, AlertCircle, CheckCircle, 
@@ -1331,43 +1332,54 @@ export default function MainBulkPricing({
                     </td>
                   </tr>
                 ) : (
-                  filteredRows.map(row => {
-                    const isSelected = row.product.vpCode === selectedVpCode;
-                    const nm = row.percentageNM;
-                    const gm = row.percentageGM;
-                    
-                    return (
-                      <React.Fragment key={row.product.vpCode}>
-                        <tr
-                          onClick={() => {
-                            setSelectedVpCode(row.product.vpCode);
-                            setIsModalOpen(true);
-                          }}
-                          className={`cursor-pointer transition hover:bg-slate-50/70 border-b border-slate-100 ${isSelected ? 'bg-indigo-50/45 font-semibold' : ''}`}
-                        >
-                          <td className="py-3 px-4">
-                            <div className="flex items-start gap-3">
-                              {/* thumbnail */}
-                              {(() => {
-                                const img = getProductImage(row.product.vpCode);
-                                return (
-                                  <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-150 flex items-center justify-center overflow-hidden shrink-0 mt-0.5 shadow-4xs">
-                                    {img ? (
-                                      <img src={img} alt={row.product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                    ) : (
-                                      <span className="text-[8px] uppercase tracking-wide text-slate-400 font-extrabold">Inochi</span>
+                      filteredRows.map(row => {
+                        const isSelected = row.product.vpCode === selectedVpCode;
+                        const nm = row.percentageNM;
+                        const gm = row.percentageGM;
+                        
+                        // Lookup detailed cogs product to display requested columns
+                        const cogsProductMatched = cogsProducts.find(p => p.skuPhanLoai === row.product.vpCode || p.barcode === row.product.vpCode);
+
+                        return (
+                          <React.Fragment key={row.product.vpCode}>
+                            <tr
+                              onClick={() => {
+                                setSelectedVpCode(row.product.vpCode);
+                                setIsModalOpen(true);
+                              }}
+                              className={`cursor-pointer transition hover:bg-slate-50/70 border-b border-slate-100 ${isSelected ? 'bg-indigo-50/45 font-semibold' : ''}`}
+                            >
+                              <td className="py-3 px-4">
+                                <div className="flex items-start gap-3">
+                                  {/* thumbnail */}
+                                  {(() => {
+                                    const img = getProductImage(row.product.vpCode);
+                                    return (
+                                      <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-150 flex items-center justify-center overflow-hidden shrink-0 mt-0.5 shadow-4xs">
+                                        {img ? (
+                                          <img src={img} alt={row.product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                        ) : (
+                                          <span className="text-[8px] uppercase tracking-wide text-slate-400 font-extrabold">Inochi</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                  <div className="min-w-0 space-y-0.5">
+                                    <p className="text-slate-800 font-black truncate max-w-[220px]">{row.product.name}</p>
+                                    <div className="flex items-center gap-1.5 text-[9px] text-slate-450 font-mono">
+                                      <span className="bg-slate-100 text-slate-600 px-1 py-0.2 rounded leading-none font-bold">VP: {row.product.vpCode}</span>
+                                      {cogsProductMatched && cogsProductMatched.name !== row.product.name && (
+                                        <span className="text-indigo-650 bg-indigo-50/60 px-1 py-0.2 rounded leading-none font-bold truncate max-w-[130px]" title={`Tên gốc: ${cogsProductMatched.name}`}>
+                                          Gốc: {cogsProductMatched.name}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {cogsProductMatched && (
+                                      <ProductCogsBadgeList product={cogsProductMatched} />
                                     )}
                                   </div>
-                                );
-                              })()}
-                              <div className="min-w-0 space-y-0.5">
-                                <p className="text-slate-800 font-black truncate max-w-[220px]">{row.product.name}</p>
-                                <div className="flex items-center gap-1.5 text-[9px] text-slate-450 font-mono">
-                                  <span className="bg-slate-100 text-slate-600 px-1 py-0.2 rounded leading-none font-bold">VP: {row.product.vpCode}</span>
                                 </div>
-                              </div>
-                            </div>
-                          </td>
+                              </td>
 
                           <td className="py-3 px-3">
                             <select
@@ -2025,6 +2037,12 @@ export default function MainBulkPricing({
 
             {/* Scrollable Configuration Panel Grid */}
             <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/10">
+              
+              {/* Product Profile & Warehousing details from Sheet COGS */}
+              {(() => {
+                const matchedCogs = cogsProducts.find(p => p.skuPhanLoai === activeCalculatedRow.product.vpCode || p.barcode === activeCalculatedRow.product.vpCode);
+                return matchedCogs ? <ProductCogsBadgeList product={matchedCogs} showAll={true} /> : null;
+              })()}
               
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 

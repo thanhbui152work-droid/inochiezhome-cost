@@ -204,35 +204,44 @@ function parseMainSheet(rows: any[][]) {
 
 function parseCogsSheet(rows: any[][]) {
   let idxBarcode = 0;
-  let idxMainSku = 2; // Column C index
-  let idxImg = 3;     // Column D index
-  let idxSkuPhanLoai = 4; // Column E index
-  let idxName = 5;    // Column F index
-  let idxSize = 6;    // Column G index
-  let idxColor = 7;   // Column H index
-  let idxCategory = 8; // Column I index
-  let idxFilter = 9;  // Column J index
-  let idxRsp = 10;    // Column K index
-  let idxCogs = 11;   // Column L index
+  let idxMainSku = 1;
+  let idxImg = 0;
+  let idxSkuPhanLoai = -1;
+  let idxName = 3;
+  let idxSize = 4;
+  let idxColor = 5;
+  let idxCategory = 6;
+  let idxFilter = -1;
+  let idxRsp = -1;
+  let idxCogs = 7;
+  let idxBoxmeBac = -1;
+  let idxBoxmeNam = -1;
+  let idxStatusBoxmeBac = -1;
+  let idxStatusBoxmeNam = -1;
 
   // Scan row headers dynamically
   if (rows.length > 0) {
-    const limit = Math.min(rows.length, 3);
+    const limit = Math.min(rows.length, 5);
     for (let r = 0; r < limit; r++) {
       const row = rows[r] || [];
       for (let c = 0; c < row.length; c++) {
         const cell = String(row[c] || "").trim().toUpperCase();
-        if (cell === "BARCODE") idxBarcode = c;
-        if (cell === "MAIN SKU" || cell === "MAIN_SKU") idxMainSku = c;
-        if (cell === "IMG" || cell === "IMAGE" || cell === "HÌNH ẢNH" || cell === "HINH ANH") idxImg = c;
-        if (cell === "SKU PHÂN LOẠI" || cell === "SKU PHAN LOAI" || cell === "SKU_PHAN_LOAI") idxSkuPhanLoai = c;
+        if (cell === "BARCODE" || cell === "MÃ VẠCH" || cell === "MA VACH") idxBarcode = c;
+        if (cell === "MAIN SKU" || cell === "MAIN_SKU" || cell === "MASTER SKU") idxMainSku = c;
+        if (cell === "IMG" || cell === "IMAGE" || cell === "HÌNH ẢNH" || cell === "HINH ANH" || cell.includes("LINK ẢNH") || cell.includes("LINK ANH")) idxImg = c;
+        if (cell === "SKU PHÂN LOẠI" || cell === "SKU PHAN LOAI" || cell === "SKU_PHAN_LOAI" || cell === "MÃ VP" || cell === "MA VP" || cell === "VP CODE") idxSkuPhanLoai = c;
         if (cell.includes("PRODUCT NAME") || cell === "PRODUCT NAME" || cell === "TÊN SẢN PHẨM" || cell === "TEN SAN PHAM") idxName = c;
         if (cell === "SIZE" || cell === "KÍCH THƯỚC") idxSize = c;
-        if (cell === "COLOR" || cell === "MÀU SẮC") idxColor = c;
-        if (cell === "CATEGORY" || cell === "DANH MỤC") idxCategory = c;
+        if (cell === "COLOR" || cell === "MÀU SẮC" || cell === "MẦU" || cell === "MAU") idxColor = c;
+        if (cell === "CATEGORY" || cell === "DANH MỤC" || cell === "LOẠI") idxCategory = c;
         if (cell === "FILTER" || cell === "BỘ LỌC") idxFilter = c;
         if (cell === "RSP") idxRsp = c;
-        if (cell === "COGS" || cell === "COGS VỐN") idxCogs = c;
+        if (cell === "COGS" || cell === "COGS VỐN" || cell === "GIÁ VỐN") idxCogs = c;
+        
+        if (cell.includes("BOXME BẮC") || cell.includes("BOXME BAC") || cell === "BOXME_BẮC" || cell === "BOXME_BAC") idxBoxmeBac = c;
+        if (cell.includes("BOXME NAM") || cell === "BOXME NAM" || cell === "BOXME_NAM") idxBoxmeNam = c;
+        if (cell.includes("STATUS BOXME_BẮC") || cell.includes("STATUS BOXME BẮC") || cell.includes("STATUS BOXME_BAC") || cell.includes("STATUS BOXME BAC") || cell.includes("STATUS_BOXME_BAC") || cell.includes("STATUS_BOXME_BẮC")) idxStatusBoxmeBac = c;
+        if (cell.includes("STATUS BOXME_NAM") || cell.includes("STATUS BOXME NAM") || cell.includes("STATUS_BOXME_NAM")) idxStatusBoxmeNam = c;
       }
     }
   }
@@ -244,20 +253,35 @@ function parseCogsSheet(rows: any[][]) {
     
     const nameValue = String(row[idxName] || "").trim();
     if (!nameValue || nameValue.toUpperCase() === "PRODUCT NAME" || nameValue.toUpperCase() === "TÊN SẢN PHẨM" || nameValue.toUpperCase() === "TEN SAN PHAM") continue;
-    if (String(row[idxMainSku] || "").toUpperCase() === "MAIN SKU") continue;
+    if (String(row[idxMainSku] || "").toUpperCase() === "MAIN SKU" || String(row[idxMainSku] || "").toUpperCase() === "MASTER SKU") continue;
+
+    const barcodeVal = String(row[idxBarcode] || "").trim();
+    const mainSkuVal = String(row[idxMainSku] || "").trim();
+
+    // Skip empty lines
+    if (!barcodeVal && !mainSkuVal && !nameValue) continue;
+
+    const boxmeBacVal = idxBoxmeBac !== -1 ? Number(row[idxBoxmeBac]) : undefined;
+    const boxmeNamVal = idxBoxmeNam !== -1 ? Number(row[idxBoxmeNam]) : undefined;
+    const statusBoxmeBacVal = idxStatusBoxmeBac !== -1 ? String(row[idxStatusBoxmeBac] || "").trim() : undefined;
+    const statusBoxmeNamVal = idxStatusBoxmeNam !== -1 ? String(row[idxStatusBoxmeNam] || "").trim() : undefined;
 
     products.push({
-      barcode: String(row[idxBarcode] || "").trim(),
-      mainSku: String(row[idxMainSku] || "").trim(),
+      barcode: barcodeVal,
+      mainSku: mainSkuVal,
       img: String(row[idxImg] || "").trim(),
-      skuPhanLoai: String(row[idxSkuPhanLoai] || String(row[idxMainSku] || "")).trim(),
+      skuPhanLoai: String(idxSkuPhanLoai !== -1 && row[idxSkuPhanLoai] ? row[idxSkuPhanLoai] : (mainSkuVal || "")).trim(),
       name: nameValue,
-      size: String(row[idxSize] || "").trim(),
-      color: String(row[idxColor] || "").trim(),
-      category: String(row[idxCategory] || "").trim(),
-      filter: String(row[idxFilter] || "").trim(),
-      rsp: cleanNumber(row[idxRsp]),
+      size: String(idxSize !== -1 && row[idxSize] ? row[idxSize] : "").trim(),
+      color: String(idxColor !== -1 && row[idxColor] ? row[idxColor] : "").trim(),
+      category: String(idxCategory !== -1 && row[idxCategory] ? row[idxCategory] : "").trim(),
+      filter: String(idxFilter !== -1 && row[idxFilter] ? row[idxFilter] : "").trim(),
+      rsp: idxRsp !== -1 ? cleanNumber(row[idxRsp]) : 0,
       cogs: cleanNumber(row[idxCogs]),
+      boxmeBac: isNaN(boxmeBacVal as number) ? undefined : boxmeBacVal,
+      boxmeNam: isNaN(boxmeNamVal as number) ? undefined : boxmeNamVal,
+      statusBoxmeBac: statusBoxmeBacVal || undefined,
+      statusBoxmeNam: statusBoxmeNamVal || undefined,
     });
   }
   return products.length > 0 ? products : fallbackCogsProducts;
