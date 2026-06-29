@@ -62,3 +62,20 @@ html, body {
   background: #D1D5DB;
 }
 
+/* Custom Global Product Image Clickability Affordance */
+img {
+  cursor: zoom-in;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+img:hover {
+  opacity: 0.92;
+}
+/* Ensure the lightbox's own preview image has a default cursor and does not trigger hover effects */
+.cursor-zoom-out img {
+  cursor: zoom-out !important;
+}
+.cursor-zoom-out img:hover {
+  opacity: 1 !important;
+}
+
+

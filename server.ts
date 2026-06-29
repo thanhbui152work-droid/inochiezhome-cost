@@ -674,35 +674,46 @@ app.get("/api/sheets-data", async (req, res) => {
 
     let stockRecords = [];
     if (cogsProducts && cogsProducts.length > 0) {
+      const uniqueStock = new Map<string, any>();
       for (const p of cogsProducts) {
         if (p.skuPhanLoai) {
-          stockRecords.push({
+          const valBac = typeof p.boxmeBac === 'number' && !isNaN(p.boxmeBac) ? p.boxmeBac : 0;
+          const valNam = typeof p.boxmeNam === 'number' && !isNaN(p.boxmeNam) ? p.boxmeNam : 0;
+
+          const keyBac = `${p.skuPhanLoai}_BMVN_BN_VSIP`;
+          uniqueStock.set(keyBac, {
             skuPhanLoai: p.skuPhanLoai,
             warehouse: 'BMVN_BN_VSIP', // Boxme Bắc
-            quantity: typeof p.boxmeBac === 'number' && !isNaN(p.boxmeBac) ? p.boxmeBac : 0
+            quantity: valBac
           });
-          stockRecords.push({
+
+          const keyNam = `${p.skuPhanLoai}_BMVN_HCM_BTN`;
+          uniqueStock.set(keyNam, {
             skuPhanLoai: p.skuPhanLoai,
             warehouse: 'BMVN_HCM_BTN', // Boxme Nam
-            quantity: typeof p.boxmeNam === 'number' && !isNaN(p.boxmeNam) ? p.boxmeNam : 0
+            quantity: valNam
           });
 
           // Also match with barcode if it's different to ensure all client queries match correctly
           if (p.barcode && p.barcode !== p.skuPhanLoai) {
-            stockRecords.push({
+            const keyBacBarcode = `${p.barcode}_BMVN_BN_VSIP`;
+            uniqueStock.set(keyBacBarcode, {
               skuPhanLoai: p.barcode,
               warehouse: 'BMVN_BN_VSIP', // Boxme Bắc
-              quantity: typeof p.boxmeBac === 'number' && !isNaN(p.boxmeBac) ? p.boxmeBac : 0
+              quantity: valBac
             });
-            stockRecords.push({
+
+            const keyNamBarcode = `${p.barcode}_BMVN_HCM_BTN`;
+            uniqueStock.set(keyNamBarcode, {
               skuPhanLoai: p.barcode,
               warehouse: 'BMVN_HCM_BTN', // Boxme Nam
-              quantity: typeof p.boxmeNam === 'number' && !isNaN(p.boxmeNam) ? p.boxmeNam : 0
+              quantity: valNam
             });
           }
         }
       }
-      console.log(`Successfully mapped ${stockRecords.length} stock records from COGS sheet ("Boxme Bắc" and "Boxme Nam")`);
+      stockRecords = Array.from(uniqueStock.values());
+      console.log(`Successfully mapped ${stockRecords.length} unique stock records from COGS sheet ("Boxme Bắc" and "Boxme Nam")`);
     }
 
     if (stockRecords.length === 0 && tonKhoSheetName) {

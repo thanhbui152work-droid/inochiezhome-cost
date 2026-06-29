@@ -129,13 +129,36 @@ export default function App() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Bind global image preview action
+  // Bind global image preview action & document-wide image click interceptor
   useEffect(() => {
     window.showImagePreview = (src: string) => {
       setPreviewImage(src);
     };
+
+    const handleGlobalImageClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && target.tagName === 'IMG') {
+        const imgEl = target as HTMLImageElement;
+        const src = imgEl.src;
+        if (src) {
+          // If the image is inside the Lightbox popup itself, let standard modal behavior handle it
+          if (imgEl.closest('.cursor-zoom-out')) {
+            return;
+          }
+          
+          setPreviewImage(src);
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    };
+
+    // Use capture phase (true) to intercept clicks globally before other handlers prevent them
+    document.addEventListener('click', handleGlobalImageClick, true);
+
     return () => {
       delete window.showImagePreview;
+      document.removeEventListener('click', handleGlobalImageClick, true);
     };
   }, []);
 
